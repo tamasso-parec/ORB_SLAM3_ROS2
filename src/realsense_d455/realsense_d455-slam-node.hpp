@@ -1,5 +1,10 @@
-#ifndef __STEREO_SLAM_NODE_HPP__
-#define __STEREO_SLAM_NODE_HPP__
+#ifndef __REALSENSE_D455_SLAM_NODE_HPP__
+#define __REALSENSE_D455_SLAM_NODE_HPP__
+
+#include <iostream>
+#include <algorithm>
+#include <fstream>
+#include <chrono>
 
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/image.hpp"
@@ -10,7 +15,6 @@
 
 #include <cv_bridge/cv_bridge.h>
 
-
 #include "System.h"
 #include "Frame.h"
 #include "Map.h"
@@ -18,29 +22,26 @@
 
 #include "utility.hpp"
 
-class StereoSlamNode : public rclcpp::Node
+class RealsenseD455SlamNode : public rclcpp::Node
 {
 public:
-    StereoSlamNode(ORB_SLAM3::System* pSLAM, const string &strSettingsFile, const string &strDoRectify);
+    RealsenseD455SlamNode(ORB_SLAM3::System* pSLAM);
 
-    ~StereoSlamNode();
+    ~RealsenseD455SlamNode();
 
 private:
     using ImageMsg = sensor_msgs::msg::Image;
     typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image, sensor_msgs::msg::Image> approximate_sync_policy;
 
-    void GrabStereo(const sensor_msgs::msg::Image::SharedPtr msgRGB, const sensor_msgs::msg::Image::SharedPtr msgD);
+    void GrabRGBD(const sensor_msgs::msg::Image::SharedPtr msgRGB, const sensor_msgs::msg::Image::SharedPtr msgD);
 
     ORB_SLAM3::System* m_SLAM;
 
-    bool doRectify;
-    cv::Mat M1l,M2l,M1r,M2r;
+    cv_bridge::CvImageConstPtr cv_ptrRGB;
+    cv_bridge::CvImageConstPtr cv_ptrD;
 
-    cv_bridge::CvImageConstPtr cv_ptrLeft;
-    cv_bridge::CvImageConstPtr cv_ptrRight;
-
-    std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image> > left_sub;
-    std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image> > right_sub;
+    std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image> > rgb_sub;
+    std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image> > depth_sub;
 
     std::shared_ptr<message_filters::Synchronizer<approximate_sync_policy> > syncApproximate;
 };

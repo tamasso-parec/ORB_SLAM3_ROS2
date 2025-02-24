@@ -5,11 +5,11 @@
 #
 # To help the search ORB_SLAM3_ROOT_DIR environment variable as the path to ORB_SLAM3 root folder
 #  e.g. `set( ORB_SLAM3_ROOT_DIR=~/ORB_SLAM3) `
-set(ORB_SLAM3_ROOT_DIR "~/Install/ORB_SLAM/ORB_SLAM3")
-
-# message(${ORB_SLAM3_ROOT_DIR})
-# message(${ORB_SLAM3_ROOT_DIR}/include)
-# message(${ORB_SLAM3_ROOT_DIR}/Thirdparty/DBoW2/DBoW2)
+#set(ORB_SLAM3_ROOT_DIR "~/Install/ORB_SLAM/ORB_SLAM3")
+set(ORB_SLAM3_ROOT_DIR "~/Documents/PhD/orb_slam3")
+message(${ORB_SLAM3_ROOT_DIR})
+message(${ORB_SLAM3_ROOT_DIR}/include)
+message(${ORB_SLAM3_ROOT_DIR}/Thirdparty/DBoW2/DBoW2)
 
 # Find ORB_SLAM3
 find_path(ORB_SLAM3_INCLUDE_DIR NAMES System.h
@@ -29,6 +29,9 @@ find_library(DBoW2_LIBRARY NAMES DBoW2
 find_library(g2o_LIBRARY NAMES g2o
              PATHS ${ORB_SLAM3_ROOT_DIR}/Thirdparty/g2o/lib)
 
+# Find sophus
+find_library(sophus_LIBRARY NAMES sophus
+             PATHS ${ORB_SLAM3_ROOT_DIR}/Thirdparty/sophus/lib)
 
 
 include(FindPackageHandleStandardArgs)
