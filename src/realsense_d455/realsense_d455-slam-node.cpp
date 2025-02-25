@@ -17,11 +17,14 @@ RealsenseD455SlamNode::RealsenseD455SlamNode(ORB_SLAM3::System* pSLAM)
     depth_sub = std::make_shared<message_filters::Subscriber<ImageMsg> >(this, "/camera/camera/aligned_depth_to_color/image_raw");
     publisher_ = this->create_publisher<std_msgs::msg::String>("/RGBD_header", 10);
 
-    syncApproximate = std::make_shared<message_filters::Synchronizer<approximate_sync_policy> >(approximate_sync_policy(10), *rgb_sub, *depth_sub);
-    // syncLatest = std::make_shared<message_filters::Synchronizer<latest_sync_policy> >(latest_sync_policy(), *rgb_sub, *depth_sub);
 
-    syncApproximate->registerCallback(&RealsenseD455SlamNode::GrabRGBD, this);
+    // syncApproximate = std::make_shared<message_filters::Synchronizer<approximate_sync_policy> >(approximate_sync_policy(10), *rgb_sub, *depth_sub);
+    // syncLatest = std::make_shared<message_filters::Synchronizer<latest_sync_policy> >(latest_sync_policy(), *rgb_sub, *depth_sub);
+    syncExact = std::make_shared<message_filters::Synchronizer<exact_sync_policy> >(exact_sync_policy(10), *rgb_sub, *depth_sub);
+
+    // syncApproximate->registerCallback(&RealsenseD455SlamNode::GrabRGBD, this);
     // syncLatest->registerCallback(&RealsenseD455SlamNode::GrabRGBD, this);
+    syncExact->registerCallback(&RealsenseD455SlamNode::GrabRGBD, this);
 
 
 }

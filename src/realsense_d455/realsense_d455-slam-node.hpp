@@ -12,8 +12,10 @@
 
 #include "message_filters/subscriber.h"
 #include "message_filters/synchronizer.h"
+#include "message_filters/time_synchronizer.h"
 #include "message_filters/sync_policies/approximate_time.h"
 #include "message_filters/sync_policies/latest_time.h"
+#include "message_filters/sync_policies/exact_time.h"
 
 #include <cv_bridge/cv_bridge.h>
 
@@ -35,6 +37,8 @@ private:
     using ImageMsg = sensor_msgs::msg::Image;
     typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image, sensor_msgs::msg::Image> approximate_sync_policy;
     typedef message_filters::sync_policies::LatestTime<ImageMsg, ImageMsg> latest_sync_policy;
+    typedef message_filters::sync_policies::ExactTime<ImageMsg, ImageMsg> exact_sync_policy;
+    
 
     void GrabRGBD(const sensor_msgs::msg::Image::SharedPtr msgRGB, const sensor_msgs::msg::Image::SharedPtr msgD);
 
@@ -48,6 +52,8 @@ private:
 
     std::shared_ptr<message_filters::Synchronizer<approximate_sync_policy> > syncApproximate;
     std::shared_ptr<message_filters::Synchronizer<latest_sync_policy> > syncLatest;
+    std::shared_ptr<message_filters::Synchronizer<exact_sync_policy> > syncExact;
+   
 
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr publisher_;
 };
