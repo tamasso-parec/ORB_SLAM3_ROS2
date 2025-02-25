@@ -29,7 +29,6 @@ int main(int argc, char **argv)
 
     node = std::make_shared<RealsenseD455SlamNode>(&SLAM);
 
-    // auto node = std::make_shared<RealsenseD455SlamNode>(&SLAM);
     std::cout << "============================ " << std::endl;
 
     rclcpp::spin(node);
