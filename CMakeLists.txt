@@ -12,7 +12,7 @@ if(NOT CMAKE_CXX_STANDARD)
 endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
+  add_compile_options(-w -Wextra -Wpedantic)
 endif()
 
 
@@ -25,6 +25,10 @@ find_package(Sophus REQUIRED)
 find_package(Pangolin REQUIRED)
 find_package(ORB_SLAM3 REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(uncertain_pointcloud_msgs REQUIRED)   
+
 
 
 
@@ -56,7 +60,9 @@ add_executable(realsense_d455
   src/realsense_d455/realsense_d455.cpp
   src/realsense_d455/realsense_d455-slam-node.cpp
 )
-ament_target_dependencies(realsense_d455 rclcpp sensor_msgs cv_bridge message_filters ORB_SLAM3 Pangolin OpenCV)
+
+ament_target_dependencies(realsense_d455 
+rclcpp tf2 tf2_ros sensor_msgs cv_bridge message_filters ORB_SLAM3 Pangolin OpenCV uncertain_pointcloud_msgs)
 
 add_executable(stereo
   src/stereo/stereo.cpp
