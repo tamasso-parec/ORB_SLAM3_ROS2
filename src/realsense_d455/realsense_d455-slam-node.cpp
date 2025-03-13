@@ -6,14 +6,16 @@ using std::placeholders::_1;
 
 RealsenseD455SlamNode::RealsenseD455SlamNode(ORB_SLAM3::System* pSLAM)
 :   Node("ORB_SLAM3_ROS2"),
+
     m_SLAM(pSLAM)
 {
 
     rgb_sub = std::make_shared<message_filters::Subscriber<ImageMsg> >(this, "/camera/camera/color/image_raw");
+    
     depth_sub = std::make_shared<message_filters::Subscriber<ImageMsg> >(this, "/camera/camera/aligned_depth_to_color/image_raw");
+
     localBApublisher_ = this->create_publisher<std_msgs::msg::String>("/localBA", 10);
 
-    
     pose_cov_pub_ = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("/slam/pose_with_covariance", 10);
 
     point_cloud_pub_ = this->create_publisher<uncertain_pointcloud_msgs::msg::UncertainPointCloud>("/slam/uncertain_point_cloud", 10);
@@ -62,6 +64,7 @@ void RealsenseD455SlamNode::GrabRGBD(const ImageMsg::SharedPtr msgRGB, const Ima
         RCLCPP_ERROR(this->get_logger(), "cv_bridge exception: %s", e.what());
         return;
     }
+
     
     m_SLAM->TrackRGBD(cv_ptrRGB->image, cv_ptrD->image, Utility::StampToSec(msgRGB->header.stamp));
 
@@ -74,11 +77,13 @@ void RealsenseD455SlamNode::GrabRGBD(const ImageMsg::SharedPtr msgRGB, const Ima
     // Check if local BA was performed
     if(m_SLAM->GetCovariances(pCovs, lCovs))
     {
-        m_SLAM->getLocalPosesAndLandmarks( ps,  mlocalLandmarks);
+        m_SLAM->getLocalPosesAndLandmarks( ps, mlocalLandmarks);
 
         Sophus::SE3f latestPose = ps.rbegin()->second;
+        
         Eigen::Matrix<float, 6, 6> latestCov = pCovs.rbegin()->second;
 
+        
         publishPoseWithCovariance(latestPose, latestCov);
         std_msgs::msg::String msg;
         msg.data = "Local BA performed";
@@ -125,22 +130,34 @@ void RealsenseD455SlamNode::publishPoseWithCovariance(const Sophus::SE3f &Tcw, c
 
         // Also publish TF transform
         geometry_msgs::msg::TransformStamped transform_msg;
+
+        Sophus::SE3f Twc = Tcw.inverse();
+        Eigen::Vector3f t_inv = Twc.translation();
+        Eigen::Quaternionf q_inv(Twc.rotationMatrix());
+
         transform_msg.header.stamp = this->now();
-        transform_msg.header.frame_id = "map";
-        transform_msg.child_frame_id = "base_link";
+        transform_msg.header.frame_id = "camera_depth_optical_frame";
+        transform_msg.child_frame_id = "map";  // Adjust per your TF tree
 
-        transform_msg.transform.translation.x = t.x();
-        transform_msg.transform.translation.y = t.y();
-        transform_msg.transform.translation.z = t.z();
+        // Eigen::Matrix3f R_base_to_cam;
+        // R_base_to_cam = Eigen::AngleAxisf(-M_PI / 2, Eigen::Vector3f::UnitY()); // 90° rotation around Y-axis
 
-        transform_msg.transform.rotation.x = q.x();
-        transform_msg.transform.rotation.y = q.y();
-        transform_msg.transform.rotation.z = q.z();
-        transform_msg.transform.rotation.w = q.w();
+        // Eigen::Quaternionf q_base_to_cam(R_base_to_cam);
+
+        // q = q_base_to_cam * q;
+        
+        transform_msg.transform.translation.x = t_inv.x();
+        transform_msg.transform.translation.y = t_inv.y();
+        transform_msg.transform.translation.z = t_inv.z();
+
+        transform_msg.transform.rotation.x = q_inv.x();
+        transform_msg.transform.rotation.y = q_inv.y();
+        transform_msg.transform.rotation.z = q_inv.z();
+        transform_msg.transform.rotation.w = q_inv.w();
 
         // Send TF transform
         tf_broadcaster_->sendTransform(transform_msg);
-    }
+}
 
 
 void RealsenseD455SlamNode::publishLandmarks()
