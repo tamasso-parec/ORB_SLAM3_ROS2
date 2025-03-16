@@ -70,12 +70,17 @@ private:
     rclcpp::Publisher<uncertain_pointcloud_msgs::msg::UncertainPointCloud>::SharedPtr point_cloud_pub_;
     std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub_;
+
+
     std::map<int, poseCov_t> poseCovs;
     std::map<int, landmarkCov_t> landmarkCovs;
     std::map<int, Sophus::SE3f> mlocalPoses;
     std::map<int, Eigen::Vector3f> mlocalLandmarks;
 
-    void publishPose();
+    Sophus::SE3f mLastPose;
+
+    void publishTrackedPose();
 
     void publishPoseWithCovariance(const Sophus::SE3f &Tcw, const Eigen::Matrix<float, 6, 6> &covariance);
 

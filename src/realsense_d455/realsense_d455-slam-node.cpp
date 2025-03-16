@@ -17,6 +17,7 @@ RealsenseD455SlamNode::RealsenseD455SlamNode(ORB_SLAM3::System* pSLAM)
     localBApublisher_ = this->create_publisher<std_msgs::msg::String>("/localBA", 10);
 
     pose_cov_pub_ = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("/slam/pose_with_covariance", 10);
+    pose_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("/slam/tracked_pose", 10);
 
     point_cloud_pub_ = this->create_publisher<uncertain_pointcloud_msgs::msg::UncertainPointCloud>("/slam/uncertain_point_cloud", 10);
     
@@ -66,7 +67,9 @@ void RealsenseD455SlamNode::GrabRGBD(const ImageMsg::SharedPtr msgRGB, const Ima
     }
 
     
-    m_SLAM->TrackRGBD(cv_ptrRGB->image, cv_ptrD->image, Utility::StampToSec(msgRGB->header.stamp));
+    mLastPose = m_SLAM->TrackRGBD(cv_ptrRGB->image, cv_ptrD->image, Utility::StampToSec(msgRGB->header.stamp));
+
+    publishTrackedPose();
 
     std::map<int, poseCov_t> pCovs;
     std::map<int, landmarkCov_t> lCovs;
@@ -129,34 +132,34 @@ void RealsenseD455SlamNode::publishPoseWithCovariance(const Sophus::SE3f &Tcw, c
         pose_cov_pub_->publish(pose_msg);
 
         // Also publish TF transform
-        geometry_msgs::msg::TransformStamped transform_msg;
+        // geometry_msgs::msg::TransformStamped transform_msg;
 
-        Sophus::SE3f Twc = Tcw.inverse();
-        Eigen::Vector3f t_inv = Twc.translation();
-        Eigen::Quaternionf q_inv(Twc.rotationMatrix());
+        // Sophus::SE3f Twc = Tcw.inverse();
+        // Eigen::Vector3f t_inv = Twc.translation();
+        // Eigen::Quaternionf q_inv(Twc.rotationMatrix());
 
-        transform_msg.header.stamp = this->now();
-        transform_msg.header.frame_id = "camera_depth_optical_frame";
-        transform_msg.child_frame_id = "map";  // Adjust per your TF tree
+        // transform_msg.header.stamp = this->now();
+        // transform_msg.header.frame_id = "camera_depth_optical_frame";
+        // transform_msg.child_frame_id = "map";  // Adjust per your TF tree
 
-        // Eigen::Matrix3f R_base_to_cam;
-        // R_base_to_cam = Eigen::AngleAxisf(-M_PI / 2, Eigen::Vector3f::UnitY()); // 90° rotation around Y-axis
+        // // Eigen::Matrix3f R_base_to_cam;
+        // // R_base_to_cam = Eigen::AngleAxisf(-M_PI / 2, Eigen::Vector3f::UnitY()); // 90° rotation around Y-axis
 
-        // Eigen::Quaternionf q_base_to_cam(R_base_to_cam);
+        // // Eigen::Quaternionf q_base_to_cam(R_base_to_cam);
 
-        // q = q_base_to_cam * q;
+        // // q = q_base_to_cam * q;
         
-        transform_msg.transform.translation.x = t_inv.x();
-        transform_msg.transform.translation.y = t_inv.y();
-        transform_msg.transform.translation.z = t_inv.z();
+        // transform_msg.transform.translation.x = t_inv.x();
+        // transform_msg.transform.translation.y = t_inv.y();
+        // transform_msg.transform.translation.z = t_inv.z();
 
-        transform_msg.transform.rotation.x = q_inv.x();
-        transform_msg.transform.rotation.y = q_inv.y();
-        transform_msg.transform.rotation.z = q_inv.z();
-        transform_msg.transform.rotation.w = q_inv.w();
+        // transform_msg.transform.rotation.x = q_inv.x();
+        // transform_msg.transform.rotation.y = q_inv.y();
+        // transform_msg.transform.rotation.z = q_inv.z();
+        // transform_msg.transform.rotation.w = q_inv.w();
 
-        // Send TF transform
-        tf_broadcaster_->sendTransform(transform_msg);
+        // // Send TF transform
+        // tf_broadcaster_->sendTransform(transform_msg);
 }
 
 
@@ -199,4 +202,59 @@ void RealsenseD455SlamNode::publishLandmarks()
 
     // Publish point cloud
     point_cloud_pub_->publish(point_cloud_msg);
+}
+
+void RealsenseD455SlamNode::publishTrackedPose()
+{
+    // Create PoseWithCovarianceStamped message
+    geometry_msgs::msg::PoseStamped pose_msg;
+    pose_msg.header.stamp = this->now();
+    pose_msg.header.frame_id = "map";  // Adjust per your TF tree
+
+    // Extract translation
+    Eigen::Vector3f t = mLastPose.translation();
+    pose_msg.pose.position.x = t.x();
+    pose_msg.pose.position.y = t.y();
+    pose_msg.pose.position.z = t.z();
+
+    // Convert rotation matrix to quaternion
+    Eigen::Quaternionf q(mLastPose.rotationMatrix());
+    pose_msg.pose.orientation.x = q.x();
+    pose_msg.pose.orientation.y = q.y();
+    pose_msg.pose.orientation.z = q.z();
+    pose_msg.pose.orientation.w = q.w();
+
+
+    // Publish pose with covariance
+    pose_pub_->publish(pose_msg);
+
+    // Also publish TF transform
+    geometry_msgs::msg::TransformStamped transform_msg;
+
+    Sophus::SE3f Twc = mLastPose.inverse();
+    Eigen::Vector3f t_inv = Twc.translation();
+    Eigen::Quaternionf q_inv(Twc.rotationMatrix());
+
+    transform_msg.header.stamp = this->now();
+    transform_msg.header.frame_id = "camera_depth_optical_frame";
+    transform_msg.child_frame_id = "map";  // Adjust per your TF tree
+
+    // Eigen::Matrix3f R_base_to_cam;
+    // R_base_to_cam = Eigen::AngleAxisf(-M_PI / 2, Eigen::Vector3f::UnitY()); // 90° rotation around Y-axis
+
+    // Eigen::Quaternionf q_base_to_cam(R_base_to_cam);
+
+    // q = q_base_to_cam * q;
+    
+    transform_msg.transform.translation.x = t_inv.x();
+    transform_msg.transform.translation.y = t_inv.y();
+    transform_msg.transform.translation.z = t_inv.z();
+
+    transform_msg.transform.rotation.x = q_inv.x();
+    transform_msg.transform.rotation.y = q_inv.y();
+    transform_msg.transform.rotation.z = q_inv.z();
+    transform_msg.transform.rotation.w = q_inv.w();
+
+    // Send TF transform
+    tf_broadcaster_->sendTransform(transform_msg);
 }
