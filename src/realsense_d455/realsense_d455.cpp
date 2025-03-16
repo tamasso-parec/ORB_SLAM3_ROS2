@@ -22,7 +22,7 @@ int main(int argc, char **argv)
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
 
     bool visualization = true;
-    string file_name;
+    string file_name{"RealsenseKeyFrameTrajectory.txt"};
     ORB_SLAM3::System SLAM(argv[1], argv[2], ORB_SLAM3::System::RGBD, visualization, 0, file_name);
 
     std::shared_ptr<RealsenseD455SlamNode> node;
