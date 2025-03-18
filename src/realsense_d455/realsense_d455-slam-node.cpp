@@ -23,6 +23,7 @@ RealsenseD455SlamNode::RealsenseD455SlamNode(ORB_SLAM3::System* pSLAM)
     
     // TF2 broadcaster
     tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+    orb_to_map_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
     syncExact = std::make_shared<message_filters::Synchronizer<exact_sync_policy> >(exact_sync_policy(10), *rgb_sub, *depth_sub);
 
@@ -106,14 +107,17 @@ void RealsenseD455SlamNode::publishPoseWithCovariance(const Sophus::SE3f &Tcw, c
         pose_msg.header.stamp = this->now();
         pose_msg.header.frame_id = "map";  // Adjust per your TF tree
 
+        // Invert the transformation
+        Sophus::SE3f Twc = Tcw.inverse();
+
         // Extract translation
-        Eigen::Vector3f t = Tcw.translation();
+        Eigen::Vector3f t = Twc.translation();
         pose_msg.pose.pose.position.x = t.x();
         pose_msg.pose.pose.position.y = t.y();
         pose_msg.pose.pose.position.z = t.z();
 
         // Convert rotation matrix to quaternion
-        Eigen::Quaternionf q(Tcw.rotationMatrix());
+        Eigen::Quaternionf q(Twc.rotationMatrix());
         pose_msg.pose.pose.orientation.x = q.x();
         pose_msg.pose.pose.orientation.y = q.y();
         pose_msg.pose.pose.orientation.z = q.z();
@@ -209,7 +213,7 @@ void RealsenseD455SlamNode::publishTrackedPose()
     // Create PoseWithCovarianceStamped message
     geometry_msgs::msg::PoseStamped pose_msg;
     pose_msg.header.stamp = this->now();
-    pose_msg.header.frame_id = "map";  // Adjust per your TF tree
+    pose_msg.header.frame_id = "camera_depth_optical_frame";  // Adjust per your TF tree
 
     // Extract translation
     Eigen::Vector3f t = mLastPose.translation();
@@ -231,13 +235,15 @@ void RealsenseD455SlamNode::publishTrackedPose()
     // Also publish TF transform
     geometry_msgs::msg::TransformStamped transform_msg;
 
-    Sophus::SE3f Twc = mLastPose.inverse();
-    Eigen::Vector3f t_inv = Twc.translation();
-    Eigen::Quaternionf q_inv(Twc.rotationMatrix());
+    // Sophus::SE3f Twc = mLastPose.inverse();
+    // Sophus::SE3f Twc = mLastPose;
+    // Eigen::Vector3f t_inv = mLastPose.translation();
+    // Eigen::Quaternionf q_inv(mLastPose.rotationMatrix());
+
 
     transform_msg.header.stamp = this->now();
     transform_msg.header.frame_id = "camera_depth_optical_frame";
-    transform_msg.child_frame_id = "map";  // Adjust per your TF tree
+    transform_msg.child_frame_id = "map";  
 
     // Eigen::Matrix3f R_base_to_cam;
     // R_base_to_cam = Eigen::AngleAxisf(-M_PI / 2, Eigen::Vector3f::UnitY()); // 90° rotation around Y-axis
@@ -246,15 +252,41 @@ void RealsenseD455SlamNode::publishTrackedPose()
 
     // q = q_base_to_cam * q;
     
-    transform_msg.transform.translation.x = t_inv.x();
-    transform_msg.transform.translation.y = t_inv.y();
-    transform_msg.transform.translation.z = t_inv.z();
+    transform_msg.transform.translation.x = t.x();
+    transform_msg.transform.translation.y = t.y();
+    transform_msg.transform.translation.z = t.z();
 
-    transform_msg.transform.rotation.x = q_inv.x();
-    transform_msg.transform.rotation.y = q_inv.y();
-    transform_msg.transform.rotation.z = q_inv.z();
-    transform_msg.transform.rotation.w = q_inv.w();
+    transform_msg.transform.rotation.x = q.x();
+    transform_msg.transform.rotation.y = q.y();
+    transform_msg.transform.rotation.z = q.z();
+    transform_msg.transform.rotation.w = q.w();
 
     // Send TF transform
     tf_broadcaster_->sendTransform(transform_msg);
+
+    transform_msg.header.stamp = this->now();
+    transform_msg.header.frame_id = "map";
+    transform_msg.child_frame_id = "world";  // Adjust per your TF tree
+
+    // Eigen::Matrix3f R_base_to_cam;
+    // R_base_to_cam = Eigen::AngleAxisf(-M_PI / 2, Eigen::Vector3f::UnitY()); // 90° rotation around Y-axis
+
+    // Eigen::Quaternionf q_base_to_cam(R_base_to_cam);
+
+    // q = q_base_to_cam * q;
+    Eigen::Quaternionf q_world_to_map(0.5, -0.5, 0.5, -0.5);
+    Eigen::Quaternionf q_map_to_world = q_world_to_map.inverse();
+
+
+    transform_msg.transform.translation.x = 0;
+    transform_msg.transform.translation.y = 0;
+    transform_msg.transform.translation.z = 0;
+
+    transform_msg.transform.rotation.x = q_map_to_world.x();
+    transform_msg.transform.rotation.y = q_map_to_world.y();
+    transform_msg.transform.rotation.z = q_map_to_world.z();
+    transform_msg.transform.rotation.w = q_map_to_world.w();
+
+    // Send TF transform
+    orb_to_map_broadcaster_->sendTransform(transform_msg);
 }
