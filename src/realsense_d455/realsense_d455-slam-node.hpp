@@ -32,6 +32,12 @@
 
 #include "utility.hpp"
 
+
+#include <opencv2/core/core.hpp>
+
+#include <librealsense2/rs.hpp>
+#include "librealsense2/rsutil.h"
+
 class RealsenseD455SlamNode : public rclcpp::Node
 {
 public:
@@ -48,6 +54,10 @@ private:
 
     typedef Eigen::Matrix<float, 6,6> poseCov_t;
     typedef Eigen::Matrix<float, 3,3> landmarkCov_t;
+
+    // REALSENSE
+    void run();
+
     
     void GrabRGBD(const sensor_msgs::msg::Image::SharedPtr msgRGB, const sensor_msgs::msg::Image::SharedPtr msgD);
 
@@ -86,6 +96,61 @@ private:
     void publishPoseWithCovariance(const Sophus::SE3f &Tcw, const Eigen::Matrix<float, 6, 6> &covariance);
 
     void publishLandmarks();
+
+
+
+    rs2_stream find_stream_to_align(const std::vector<rs2::stream_profile>& streams);
+    bool profile_changed(const std::vector<rs2::stream_profile>& current, const std::vector<rs2::stream_profile>& prev);
+
+    void interpolateData(const std::vector<double> &vBase_times,
+                        std::vector<rs2_vector> &vInterp_data, std::vector<double> &vInterp_times,
+                        const rs2_vector &prev_data, const double &prev_time);
+
+    rs2_vector interpolateMeasure(const double target_time,
+                                const rs2_vector current_data, const double current_time,
+                                const rs2_vector prev_data, const double prev_time);
+
+    static rs2_option get_sensor_option(const rs2::sensor& sensor)
+    {
+        // Sensors usually have several options to control their properties
+        //  such as Exposure, Brightness etc.
+
+        std::cout << "Sensor supports the following options:\n" << std::endl;
+
+        // The following loop shows how to iterate over all available options
+        // Starting from 0 until RS2_OPTION_COUNT (exclusive)
+        for (int i = 0; i < static_cast<int>(RS2_OPTION_COUNT); i++)
+        {
+            rs2_option option_type = static_cast<rs2_option>(i);
+            //SDK enum types can be streamed to get a string that represents them
+            std::cout << "  " << i << ": " << option_type;
+
+            // To control an option, use the following api:
+
+            // First, verify that the sensor actually supports this option
+            if (sensor.supports(option_type))
+            {
+                std::cout << std::endl;
+
+                // Get a human readable description of the option
+                const char* description = sensor.get_option_description(option_type);
+                std::cout << "       Description   : " << description << std::endl;
+
+                // Get the current value of the option
+                float current_value = sensor.get_option(option_type);
+                std::cout << "       Current Value : " << current_value << std::endl;
+
+                //To change the value of an option, please follow the change_sensor_option() function
+            }
+            else
+            {
+                std::cout << " is not supported" << std::endl;
+            }
+        }
+
+        uint32_t selected_sensor_option = 0;
+        return static_cast<rs2_option>(selected_sensor_option);
+    }
 
 
 

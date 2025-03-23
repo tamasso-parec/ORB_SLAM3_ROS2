@@ -28,8 +28,7 @@ find_package(OpenCV REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(uncertain_pointcloud_msgs REQUIRED)   
-
-
+find_package(realsense2 REQUIRED)
 
 
 
@@ -38,6 +37,7 @@ include_directories(
   ${ORB_SLAM3_ROOT_DIR}/include
   ${ORB_SLAM3_ROOT_DIR}/include/CameraModels
   ${ORB_SLAM3_ROOT_DIR}/Thirdparty/Sophus
+  ${realsense_INCLUDE_DIR}
 )
 
 link_directories(
@@ -61,8 +61,10 @@ add_executable(realsense_d455
   src/realsense_d455/realsense_d455-slam-node.cpp
 )
 
+target_link_libraries(realsense_d455 ${realsense2_LIBRARY})
+
 ament_target_dependencies(realsense_d455 
-rclcpp tf2 tf2_ros sensor_msgs cv_bridge message_filters ORB_SLAM3 Pangolin OpenCV uncertain_pointcloud_msgs)
+rclcpp tf2 tf2_ros sensor_msgs cv_bridge message_filters ORB_SLAM3 Pangolin OpenCV uncertain_pointcloud_msgs realsense2)
 
 add_executable(stereo
   src/stereo/stereo.cpp
