@@ -44,6 +44,8 @@ public:
 
     RealsenseD455SlamNode(ORB_SLAM3::System* pSLAM);
 
+    RealsenseD455SlamNode(std::string vocabulary_file, std::string settings_file, std::string file_name);
+
     ~RealsenseD455SlamNode();
 
 private:
@@ -62,6 +64,8 @@ private:
     void GrabRGBD(const sensor_msgs::msg::Image::SharedPtr msgRGB, const sensor_msgs::msg::Image::SharedPtr msgD);
 
     ORB_SLAM3::System* m_SLAM;
+
+    std::string vocabularyFile, settingsFile, outFile;
 
     cv_bridge::CvImageConstPtr cv_ptrRGB;
     cv_bridge::CvImageConstPtr cv_ptrD;

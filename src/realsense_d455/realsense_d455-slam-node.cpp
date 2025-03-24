@@ -4,6 +4,35 @@
 
 using std::placeholders::_1;
 
+RealsenseD455SlamNode::RealsenseD455SlamNode(std::string vocabulary_file, std::string settings_file, std::string file_name)
+
+:   Node("ORB_SLAM3_ROS2"), vocabularyFile(vocabulary_file), settingsFile(settings_file), outFile(file_name)
+{
+
+    // rgb_sub = std::make_shared<message_filters::Subscriber<ImageMsg> >(this, "/camera/camera/color/image_raw");
+    
+    // depth_sub = std::make_shared<message_filters::Subscriber<ImageMsg> >(this, "/camera/camera/aligned_depth_to_color/image_raw");
+
+    localBApublisher_ = this->create_publisher<std_msgs::msg::String>("/localBA", 10);
+
+    pose_cov_pub_ = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("/slam/pose_with_covariance", 10);
+    pose_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("/slam/tracked_pose", 10);
+
+    point_cloud_pub_ = this->create_publisher<uncertain_pointcloud_msgs::msg::UncertainPointCloud>("/slam/uncertain_point_cloud", 10);
+    
+    // TF2 broadcaster
+    tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+    orb_to_map_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+
+    // syncExact = std::make_shared<message_filters::Synchronizer<exact_sync_policy> >(exact_sync_policy(10), *rgb_sub, *depth_sub);
+
+    // syncExact->registerCallback(&RealsenseD455SlamNode::GrabRGBD, this);
+
+    run();
+
+
+}
+
 RealsenseD455SlamNode::RealsenseD455SlamNode(ORB_SLAM3::System* pSLAM)
 :   Node("ORB_SLAM3_ROS2"),
 
@@ -215,7 +244,7 @@ void RealsenseD455SlamNode::publishTrackedPose()
     // Create PoseWithCovarianceStamped message
     geometry_msgs::msg::PoseStamped pose_msg;
     pose_msg.header.stamp = this->now();
-    pose_msg.header.frame_id = "camera_depth_optical_frame";  // Adjust per your TF tree
+    pose_msg.header.frame_id = "camera_color_optical_frame";  // Adjust per your TF tree
 
     // Extract translation
     Eigen::Vector3f t = mLastPose.translation();
@@ -244,7 +273,7 @@ void RealsenseD455SlamNode::publishTrackedPose()
 
 
     transform_msg.header.stamp = this->now();
-    transform_msg.header.frame_id = "camera_depth_optical_frame";
+    transform_msg.header.frame_id = "camera_color_optical_frame";
     transform_msg.child_frame_id = "map";  
 
     // Eigen::Matrix3f R_base_to_cam;
@@ -448,6 +477,9 @@ void RealsenseD455SlamNode::run()
     intrinsics_cam.coeffs[2] << ", " << intrinsics_cam.coeffs[3] << ", " << intrinsics_cam.coeffs[4] << ", " << std::endl;
     std::cout << " Model = " << intrinsics_cam.model << std::endl;
 
+    // Create SLAM system. It initializes all system threads and gets ready to process frames.
+    ORB_SLAM3::System SLAM(vocabularyFile ,  settingsFile,ORB_SLAM3::System::RGBD, true, 0, outFile);
+    m_SLAM = &SLAM;
     float imageScale = m_SLAM->GetImageScale();
 
     double timestamp;
@@ -462,7 +494,10 @@ void RealsenseD455SlamNode::run()
         {
             std::unique_lock<std::mutex> lk(imu_mutex);
             if(!image_ready)
+            {
                 cond_image_rec.wait(lk);
+                // std::cout << "Waiting for image\n";
+            }
 
             fs = fsSLAM;
 
@@ -505,6 +540,32 @@ void RealsenseD455SlamNode::run()
         mLastPose = m_SLAM->TrackRGBD(im, depth, timestamp); //, vImuMeas); depthCV
 
         publishTrackedPose();
+
+        std::map<int, poseCov_t> pCovs;
+        std::map<int, landmarkCov_t> lCovs;
+        std::map<int, Sophus::SE3f> ps;
+        std::map<int, Eigen::Vector3f> ls;
+
+
+        // Check if local BA was performed
+        if(m_SLAM->GetCovariances(pCovs, lCovs))
+        {
+            m_SLAM->getLocalPosesAndLandmarks( ps, mlocalLandmarks);
+
+            Sophus::SE3f latestPose = ps.rbegin()->second;
+            
+            Eigen::Matrix<float, 6, 6> latestCov = pCovs.rbegin()->second;
+
+            
+            publishPoseWithCovariance(latestPose, latestCov);
+            std_msgs::msg::String msg;
+            msg.data = "Local BA performed";
+            localBApublisher_->publish(msg);
+
+            publishLandmarks();
+
+            m_SLAM->reset_new_lba_2_publish_flag();
+        }
 
     }
     cout << "System shutdown!\n";
