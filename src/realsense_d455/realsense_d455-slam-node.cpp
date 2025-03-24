@@ -10,9 +10,9 @@ RealsenseD455SlamNode::RealsenseD455SlamNode(ORB_SLAM3::System* pSLAM)
     m_SLAM(pSLAM)
 {
 
-    rgb_sub = std::make_shared<message_filters::Subscriber<ImageMsg> >(this, "/camera/camera/color/image_raw");
+    // rgb_sub = std::make_shared<message_filters::Subscriber<ImageMsg> >(this, "/camera/camera/color/image_raw");
     
-    depth_sub = std::make_shared<message_filters::Subscriber<ImageMsg> >(this, "/camera/camera/aligned_depth_to_color/image_raw");
+    // depth_sub = std::make_shared<message_filters::Subscriber<ImageMsg> >(this, "/camera/camera/aligned_depth_to_color/image_raw");
 
     localBApublisher_ = this->create_publisher<std_msgs::msg::String>("/localBA", 10);
 
@@ -25,9 +25,9 @@ RealsenseD455SlamNode::RealsenseD455SlamNode(ORB_SLAM3::System* pSLAM)
     tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
     orb_to_map_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
-    syncExact = std::make_shared<message_filters::Synchronizer<exact_sync_policy> >(exact_sync_policy(10), *rgb_sub, *depth_sub);
+    // syncExact = std::make_shared<message_filters::Synchronizer<exact_sync_policy> >(exact_sync_policy(10), *rgb_sub, *depth_sub);
 
-    syncExact->registerCallback(&RealsenseD455SlamNode::GrabRGBD, this);
+    // syncExact->registerCallback(&RealsenseD455SlamNode::GrabRGBD, this);
 
     run();
 
@@ -430,15 +430,9 @@ void RealsenseD455SlamNode::run()
         }
     };
 
-
-
     pipe_profile = pipe.start(cfg, imu_callback);
 
-
-
     rs2::stream_profile cam_stream = pipe_profile.get_stream(RS2_STREAM_COLOR);
-
-
 
 
     rs2_intrinsics intrinsics_cam = cam_stream.as<rs2::video_stream_profile>().get_intrinsics();
@@ -483,6 +477,7 @@ void RealsenseD455SlamNode::run()
             image_ready = false;
         }
 
+        // std::cout << "Running SLAM\n";
         // Perform alignment here
         auto processed = align.process(fs);
 
@@ -492,6 +487,7 @@ void RealsenseD455SlamNode::run()
 
         im = cv::Mat(cv::Size(width_img, height_img), CV_8UC3, (void*)(color_frame.get_data()), cv::Mat::AUTO_STEP);
         depth = cv::Mat(cv::Size(width_img, height_img), CV_16U, (void*)(depth_frame.get_data()), cv::Mat::AUTO_STEP);
+
 
         /*cv::Mat depthCV_8U;
         depthCV.convertTo(depthCV_8U,CV_8U,0.01);
@@ -506,7 +502,9 @@ void RealsenseD455SlamNode::run()
             cv::resize(depth, depth, cv::Size(width, height));
         }
         // Pass the image to the SLAM system
-        m_SLAM->TrackRGBD(im, depth, timestamp); //, vImuMeas); depthCV
+        mLastPose = m_SLAM->TrackRGBD(im, depth, timestamp); //, vImuMeas); depthCV
+
+        publishTrackedPose();
 
     }
     cout << "System shutdown!\n";
