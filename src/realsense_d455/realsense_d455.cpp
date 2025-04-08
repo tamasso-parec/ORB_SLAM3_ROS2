@@ -23,11 +23,11 @@ int main(int argc, char **argv)
 
     bool visualization = true;
     string file_name{"RealsenseKeyFrameTrajectory.txt"};
-    // ORB_SLAM3::System SLAM(argv[1], argv[2], ORB_SLAM3::System::RGBD, visualization, 0, file_name);
+    ORB_SLAM3::System SLAM(argv[1], argv[2], ORB_SLAM3::System::RGBD, visualization, 0, file_name);
 
     std::shared_ptr<RealsenseD455SlamNode> node;
 
-    node = std::make_shared<RealsenseD455SlamNode>(argv[1], argv[2], file_name);
+    node = std::make_shared<RealsenseD455SlamNode>(&SLAM);
 
     std::cout << "============================ " << std::endl;
 
