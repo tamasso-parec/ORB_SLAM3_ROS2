@@ -27,6 +27,7 @@ SimulationRGBDSlamNode::SimulationRGBDSlamNode(ORB_SLAM3::System* pSLAM)
     orb_to_map_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
     syncExact = std::make_shared<message_filters::Synchronizer<exact_sync_policy> >(exact_sync_policy(10), *rgb_sub, *depth_sub);
+    // syncApproximate = std::make_shared<message_filters::Synchronizer<approximate_sync_policy> >(approximate_sync_policy(10), *rgb_sub, *depth_sub);
 
     syncExact->registerCallback(&SimulationRGBDSlamNode::GrabRGBD, this);
 
