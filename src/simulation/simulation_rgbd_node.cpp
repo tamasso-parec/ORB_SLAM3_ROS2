@@ -11,9 +11,9 @@ SimulationRGBDSlamNode::SimulationRGBDSlamNode(ORB_SLAM3::System* pSLAM)
     m_SLAM(pSLAM)
 {
 
-    rgb_sub = std::make_shared<message_filters::Subscriber<ImageMsg> >(this, "/camera/color/image_raw");
+    rgb_sub = std::make_shared<message_filters::Subscriber<ImageMsg> >(this, "/x500_realsense/image_raw");
     
-    depth_sub = std::make_shared<message_filters::Subscriber<ImageMsg> >(this, "/camera/depth/image_raw");
+    depth_sub = std::make_shared<message_filters::Subscriber<ImageMsg> >(this, "/x500_realsense/depth_image");
 
     localBApublisher_ = this->create_publisher<std_msgs::msg::String>("/localBA", 10);
 

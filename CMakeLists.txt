@@ -108,7 +108,6 @@ add_executable(simulation_rgbd
   src/simulation/simulation_rgbd.cpp
 )
 
-
 ament_target_dependencies(simulation_rgbd 
 rclcpp tf2 tf2_ros sensor_msgs cv_bridge message_filters ORB_SLAM3 Pangolin OpenCV uncertain_pointcloud_msgs)
 
@@ -135,7 +134,20 @@ ament_target_dependencies(stereo-inertial rclcpp sensor_msgs cv_bridge ORB_SLAM3
 # ==============================================================================================================================================
 # ==============================================================================================================================================
 
-install(TARGETS mono rgbd realsense_d455 stereo stereo-inertial DESTINATION lib/${PROJECT_NAME})
+install(TARGETS mono rgbd realsense_d455 stereo stereo-inertial simulation_rgbd DESTINATION lib/${PROJECT_NAME})
+
+
+install(
+  DIRECTORY
+    config/
+  DESTINATION share/${PROJECT_NAME}/config
+)
+
+install(
+  DIRECTORY
+    vocabulary/
+  DESTINATION share/${PROJECT_NAME}/vocabulary
+)
 
 # Install launch files.
 #install(DIRECTORY launch config vocabulary
