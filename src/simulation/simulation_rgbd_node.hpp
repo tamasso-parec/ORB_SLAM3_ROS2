@@ -8,6 +8,8 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/image.hpp"
+#include "sensor_msgs/msg/point_cloud2.hpp"
+#include "sensor_msgs/point_cloud2_iterator.hpp"
 #include "std_msgs/msg/string.hpp"
 
 #include "message_filters/subscriber.h"
@@ -42,14 +44,24 @@ public:
 
 private:
     using ImageMsg = sensor_msgs::msg::Image;
-    typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image, sensor_msgs::msg::Image> approximate_sync_policy;
+    using PclMsg = sensor_msgs::msg::PointCloud2;
+
+    typedef message_filters::sync_policies::ApproximateTime<ImageMsg, ImageMsg> approximate_sync_policy;
+    // typedef message_filters::sync_policies::ApproximateTime<ImageMsg, PclMsg> approximate_sync_policy;
+
     typedef message_filters::sync_policies::LatestTime<ImageMsg, ImageMsg> latest_sync_policy;
+
     typedef message_filters::sync_policies::ExactTime<ImageMsg, ImageMsg> exact_sync_policy;
+    // typedef message_filters::sync_policies::ExactTime<ImageMsg, PclMsg> exact_sync_policy;
 
     typedef Eigen::Matrix<float, 6,6> poseCov_t;
     typedef Eigen::Matrix<float, 3,3> landmarkCov_t;
     
-    void GrabRGBD(const sensor_msgs::msg::Image::SharedPtr msgRGB, const sensor_msgs::msg::Image::SharedPtr msgD);
+    void GrabRGBD(const ImageMsg::SharedPtr msgRGB, const ImageMsg::SharedPtr msgD);
+    // void GrabRGBD(const sensor_msgs::msg::Image::SharedPtr msgRGB, const PclMsg::SharedPtr msgD);
+
+    void convertPcl2cv(const PclMsg::SharedPtr msgPcl);
+    
 
     ORB_SLAM3::System* m_SLAM;
 
@@ -58,6 +70,8 @@ private:
 
     std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image> > rgb_sub;
     std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image> > depth_sub;
+    std::shared_ptr<message_filters::Subscriber<PclMsg> > pcl_sub;
+
 
     std::shared_ptr<message_filters::Synchronizer<approximate_sync_policy> > syncApproximate;
     std::shared_ptr<message_filters::Synchronizer<latest_sync_policy> > syncLatest;

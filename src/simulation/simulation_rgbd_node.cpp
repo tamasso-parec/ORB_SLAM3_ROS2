@@ -11,9 +11,11 @@ SimulationRGBDSlamNode::SimulationRGBDSlamNode(ORB_SLAM3::System* pSLAM)
     m_SLAM(pSLAM)
 {
 
-    rgb_sub = std::make_shared<message_filters::Subscriber<ImageMsg> >(this, "/x500_realsense/image_raw");
+    rgb_sub = std::make_shared<message_filters::Subscriber<ImageMsg> >(this, "/rgbd_camera/image");
     
-    depth_sub = std::make_shared<message_filters::Subscriber<ImageMsg> >(this, "/x500_realsense/depth_image");
+    depth_sub = std::make_shared<message_filters::Subscriber<ImageMsg> >(this, "/rgbd_camera/depth_image");
+
+    // pcl_sub   = std::make_shared<message_filters::Subscriber<PclMsg> >(this, "/rgbd_camera/points");
 
     localBApublisher_ = this->create_publisher<std_msgs::msg::String>("/localBA", 10);
 
@@ -27,9 +29,13 @@ SimulationRGBDSlamNode::SimulationRGBDSlamNode(ORB_SLAM3::System* pSLAM)
     orb_to_map_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
     syncExact = std::make_shared<message_filters::Synchronizer<exact_sync_policy> >(exact_sync_policy(10), *rgb_sub, *depth_sub);
-    // syncApproximate = std::make_shared<message_filters::Synchronizer<approximate_sync_policy> >(approximate_sync_policy(10), *rgb_sub, *depth_sub);
+
+
+    // syncExact = std::make_shared<message_filters::Synchronizer<exact_sync_policy> >(exact_sync_policy(10), *rgb_sub, *pcl_sub);
+    // syncApproximate = std::make_shared<message_filters::Synchronizer<approximate_sync_policy> >(approximate_sync_policy(10), *rgb_sub, *pcl_sub);
 
     syncExact->registerCallback(&SimulationRGBDSlamNode::GrabRGBD, this);
+    // syncApproximate->registerCallback(&SimulationRGBDSlamNode::GrabRGBD, this);
 
 
 }
@@ -45,7 +51,7 @@ SimulationRGBDSlamNode::~SimulationRGBDSlamNode()
 
 }
 
-void SimulationRGBDSlamNode::GrabRGBD(const ImageMsg::SharedPtr msgRGB, const ImageMsg::SharedPtr msgD)
+void SimulationRGBDSlamNode::GrabRGBD(const sensor_msgs::msg::Image::SharedPtr msgRGB, const ImageMsg::SharedPtr msgD)
 {
     // Copy the ros rgb image message to cv::Mat.
     try
@@ -69,8 +75,11 @@ void SimulationRGBDSlamNode::GrabRGBD(const ImageMsg::SharedPtr msgRGB, const Im
         return;
     }
 
-    
-    mLastPose = m_SLAM->TrackRGBD(cv_ptrRGB->image, cv_ptrD->image, Utility::StampToSec(msgRGB->header.stamp));
+    std::cout << "Depth image:\n" << cv_ptrD->image << std::endl;
+
+    // Convert the PointCloud2 message to cv::Mat
+
+    mLastPose = m_SLAM->TrackRGBD(cv_ptrRGB->image, 1000*cv_ptrD->image, Utility::StampToSec(msgRGB->header.stamp));
 
     publishTrackedPose();
 
@@ -99,6 +108,51 @@ void SimulationRGBDSlamNode::GrabRGBD(const ImageMsg::SharedPtr msgRGB, const Im
 
         m_SLAM->reset_new_lba_2_publish_flag();
     }
+}
+
+void SimulationRGBDSlamNode::convertPcl2cv(const PclMsg::SharedPtr cloud)
+{
+    
+    // Initialize an OpenCV Mat with the same height and width as the PointCloud2
+    cv::Mat img(cloud->height, cloud->width, CV_32FC1, cv::Scalar(0));
+
+    sensor_msgs::PointCloud2ConstIterator<float> iter_z(*cloud, "z");
+
+    for (size_t i{0}; i < cloud->width * cloud->height; ++i, ++iter_z)
+    {
+        if (std::isnan(*iter_z))
+        {
+            img.at<float>(i / cloud->width, i % cloud->width) = 0;
+        }
+        else
+        {
+            img.at<float>(i / cloud->width, i % cloud->width) = *iter_z;
+        }
+    }
+
+    // // Iterate through the organized point cloud
+    // for (size_t row = 0; row < cloud->height; ++row)
+    // {
+    //     for (size_t col = 0; col < cloud->width; ++col)
+    //     {
+    //         const auto& point = cloud->data[row * cloud->width + col];
+    //         size_t u = col;
+    //         size_t v = cloud->height-row-1; //image coordinates are flipped
+    //         // Check if the point is valid (not NaN)
+    //         // if (pcl::isFinite(point))
+    //         {
+    //             // Calculate the range value (distance from the origin)
+    //             // float range = point.z;
+                
+    //             img.at<float>(v, u) = point.z; // access as [row, col]
+    //         }
+    //         // else
+    //         // {
+    //         //     img.at<float>(v, u) = 0; // Set invalid points to 0
+    //         // }
+    //     }
+    // }
+    cv_ptrD = std::make_shared<const cv_bridge::CvImage>(cv_bridge::CvImage(cloud->header, sensor_msgs::image_encodings::TYPE_32FC1, img));
 }
 
 void SimulationRGBDSlamNode::publishPoseWithCovariance(const Sophus::SE3f &Tcw, const Eigen::Matrix<float, 6, 6> &covariance) 
