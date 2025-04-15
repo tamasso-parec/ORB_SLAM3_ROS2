@@ -28,7 +28,7 @@ find_package(OpenCV REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(uncertain_pointcloud_msgs REQUIRED)   
-
+find_package(realsense2 REQUIRED)
 
 
 
@@ -38,45 +38,116 @@ include_directories(
   ${ORB_SLAM3_ROOT_DIR}/include
   ${ORB_SLAM3_ROOT_DIR}/include/CameraModels
   ${ORB_SLAM3_ROOT_DIR}/Thirdparty/Sophus
+  ${realsense_INCLUDE_DIR}
 )
+
 
 link_directories(
   include
 )
 
+# ==============================================================================================================================================
+# ==============================================================================================================================================
+# ==============================================================================================================================================
+
 add_executable(mono
   src/monocular/mono.cpp
   src/monocular/monocular-slam-node.cpp
-)
+  )
 ament_target_dependencies(mono rclcpp sensor_msgs cv_bridge ORB_SLAM3 Pangolin OpenCV)
 
+# ==============================================================================================================================================
+# ==============================================================================================================================================
+# ==============================================================================================================================================
+  
 add_executable(rgbd
   src/rgbd/rgbd.cpp
   src/rgbd/rgbd-slam-node.cpp
 )
 ament_target_dependencies(rgbd rclcpp sensor_msgs cv_bridge message_filters ORB_SLAM3 Pangolin OpenCV)
 
+# ==============================================================================================================================================
+# ==============================================================================================================================================
+# ==============================================================================================================================================
+
 add_executable(realsense_d455
   src/realsense_d455/realsense_d455.cpp
+  src/realsense_d455/codec.hpp
+  src/realsense_d455/codec.cpp
+  src/realsense_d455/realsense_d455-slam-node.hpp
   src/realsense_d455/realsense_d455-slam-node.cpp
 )
 
+target_link_libraries(realsense_d455 ${realsense2_LIBRARY})
+
+
+
 ament_target_dependencies(realsense_d455 
+rclcpp tf2 tf2_ros sensor_msgs cv_bridge message_filters ORB_SLAM3 Pangolin OpenCV uncertain_pointcloud_msgs realsense2  )
+
+# ==============================================================================================================================================
+# ==============================================================================================================================================
+# ==============================================================================================================================================
+
+add_executable(wrapped_realsense
+  src/realsense_d455/wrapped_realsense_node.cpp
+  src/realsense_d455/wrapped_realsense.cpp
+)
+
+target_link_libraries(wrapped_realsense ${realsense2_LIBRARY})
+
+ament_target_dependencies(wrapped_realsense 
+rclcpp tf2 tf2_ros sensor_msgs cv_bridge message_filters ORB_SLAM3 Pangolin OpenCV uncertain_pointcloud_msgs realsense2)
+
+# ==============================================================================================================================================
+# ==============================================================================================================================================
+# ==============================================================================================================================================
+
+add_executable(simulation_rgbd
+  src/simulation/simulation_rgbd_node.cpp
+  src/simulation/simulation_rgbd.cpp
+)
+
+ament_target_dependencies(simulation_rgbd 
 rclcpp tf2 tf2_ros sensor_msgs cv_bridge message_filters ORB_SLAM3 Pangolin OpenCV uncertain_pointcloud_msgs)
 
+# ==============================================================================================================================================
+# ==============================================================================================================================================
+# ==============================================================================================================================================
+
 add_executable(stereo
-  src/stereo/stereo.cpp
-  src/stereo/stereo-slam-node.cpp
+src/stereo/stereo.cpp
+src/stereo/stereo-slam-node.cpp
 )
 ament_target_dependencies(stereo rclcpp sensor_msgs cv_bridge message_filters ORB_SLAM3 Pangolin OpenCV)
+# ==============================================================================================================================================
+# ==============================================================================================================================================
+# ==============================================================================================================================================
 
 add_executable(stereo-inertial
-  src/stereo-inertial/stereo-inertial.cpp
-  src/stereo-inertial/stereo-inertial-node.cpp
+src/stereo-inertial/stereo-inertial.cpp
+src/stereo-inertial/stereo-inertial-node.cpp
 )
 ament_target_dependencies(stereo-inertial rclcpp sensor_msgs cv_bridge ORB_SLAM3 Pangolin OpenCV)
 
-install(TARGETS mono rgbd realsense_d455 stereo stereo-inertial DESTINATION lib/${PROJECT_NAME})
+# ==============================================================================================================================================
+# ==============================================================================================================================================
+# ==============================================================================================================================================
+
+install(TARGETS mono rgbd realsense_d455 stereo stereo-inertial simulation_rgbd DESTINATION lib/${PROJECT_NAME})
+
+
+install(
+  DIRECTORY
+    config/
+  DESTINATION share/${PROJECT_NAME}/config
+)
+
+install(
+  DIRECTORY
+    vocabulary/
+  DESTINATION share/${PROJECT_NAME}/vocabulary
+)
 
 # Install launch files.
 #install(DIRECTORY launch config vocabulary

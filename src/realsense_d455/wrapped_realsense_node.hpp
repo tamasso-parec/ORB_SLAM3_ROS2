@@ -8,7 +8,6 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/image.hpp"
-#include "sensor_msgs/msg/compressed_image.hpp"
 #include "std_msgs/msg/string.hpp"
 
 #include "message_filters/subscriber.h"
@@ -26,8 +25,6 @@
 
 #include <cv_bridge/cv_bridge.h>
 
-#include "codec.hpp"
-
 #include "System.h"
 #include "Frame.h"
 #include "Map.h"
@@ -41,18 +38,18 @@
 #include <librealsense2/rs.hpp>
 #include "librealsense2/rsutil.h"
 
-class RealsenseD455SlamNode : public rclcpp::Node
+class WrappedRealsenseD455SlamNode : public rclcpp::Node
 {
 public:
 
-    RealsenseD455SlamNode(ORB_SLAM3::System* pSLAM);
+    WrappedRealsenseD455SlamNode(ORB_SLAM3::System* pSLAM);
 
-    RealsenseD455SlamNode(std::string vocabulary_file, std::string settings_file, std::string file_name);
+    WrappedRealsenseD455SlamNode(std::string vocabulary_file, std::string settings_file, std::string file_name);
 
-    ~RealsenseD455SlamNode();
+    ~WrappedRealsenseD455SlamNode();
 
 private:
-    using ImageMsg = sensor_msgs::msg::CompressedImage;
+    using ImageMsg = sensor_msgs::msg::Image;
     typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image, sensor_msgs::msg::Image> approximate_sync_policy;
     typedef message_filters::sync_policies::LatestTime<ImageMsg, ImageMsg> latest_sync_policy;
     typedef message_filters::sync_policies::ExactTime<ImageMsg, ImageMsg> exact_sync_policy;
@@ -64,7 +61,7 @@ private:
     void run();
 
     
-    void GrabRGBD(const ImageMsg::SharedPtr msgRGB, const ImageMsg::SharedPtr msgD);
+    void GrabRGBD(const sensor_msgs::msg::Image::SharedPtr msgRGB, const sensor_msgs::msg::Image::SharedPtr msgD);
 
     ORB_SLAM3::System* m_SLAM;
 
@@ -73,8 +70,8 @@ private:
     cv_bridge::CvImageConstPtr cv_ptrRGB;
     cv_bridge::CvImageConstPtr cv_ptrD;
 
-    std::shared_ptr<message_filters::Subscriber<ImageMsg> > rgb_sub;
-    std::shared_ptr<message_filters::Subscriber<ImageMsg> > depth_sub;
+    std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image> > rgb_sub;
+    std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image> > depth_sub;
 
     std::shared_ptr<message_filters::Synchronizer<approximate_sync_policy> > syncApproximate;
     std::shared_ptr<message_filters::Synchronizer<latest_sync_policy> > syncLatest;
