@@ -1,17 +1,17 @@
-#include "realsense_d455-slam-node.hpp"
+#include "wrapped_realsense_node.hpp"
 
 #include <opencv2/core/core.hpp>
 
 using std::placeholders::_1;
 
-RealsenseD455SlamNode::RealsenseD455SlamNode(std::string vocabulary_file, std::string settings_file, std::string file_name)
+WrappedRealsenseD455SlamNode::WrappedRealsenseD455SlamNode(std::string vocabulary_file, std::string settings_file, std::string file_name)
 
 :   Node("ORB_SLAM3_ROS2"), vocabularyFile(vocabulary_file), settingsFile(settings_file), outFile(file_name)
 {
 
-    rgb_sub = std::make_shared<message_filters::Subscriber<ImageMsg> >(this, "/camera/camera/color/image_raw/compressed");
+    // rgb_sub = std::make_shared<message_filters::Subscriber<ImageMsg> >(this, "/camera/camera/color/image_raw");
     
-    depth_sub = std::make_shared<message_filters::Subscriber<ImageMsg> >(this, "/camera/camera/aligned_depth_to_color/image_raw/compressedDepth");
+    // depth_sub = std::make_shared<message_filters::Subscriber<ImageMsg> >(this, "/camera/camera/aligned_depth_to_color/image_raw");
 
     localBApublisher_ = this->create_publisher<std_msgs::msg::String>("/localBA", 10);
 
@@ -24,23 +24,24 @@ RealsenseD455SlamNode::RealsenseD455SlamNode(std::string vocabulary_file, std::s
     tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
     orb_to_map_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
-    syncExact = std::make_shared<message_filters::Synchronizer<exact_sync_policy> >(exact_sync_policy(10), *rgb_sub, *depth_sub);
+    // syncExact = std::make_shared<message_filters::Synchronizer<exact_sync_policy> >(exact_sync_policy(10), *rgb_sub, *depth_sub);
 
-    syncExact->registerCallback(&RealsenseD455SlamNode::GrabRGBD, this);
+    // syncExact->registerCallback(&WrappedRealsenseD455SlamNode::GrabRGBD, this);
 
+    run();
 
 
 }
 
-RealsenseD455SlamNode::RealsenseD455SlamNode(ORB_SLAM3::System* pSLAM)
+WrappedRealsenseD455SlamNode::WrappedRealsenseD455SlamNode(ORB_SLAM3::System* pSLAM)
 :   Node("ORB_SLAM3_ROS2"),
 
     m_SLAM(pSLAM)
 {
 
-    rgb_sub = std::make_shared<message_filters::Subscriber<ImageMsg> >(this, "/camera/camera/color/image_raw/compressed");
+    // rgb_sub = std::make_shared<message_filters::Subscriber<ImageMsg> >(this, "/camera/camera/color/image_raw");
     
-    depth_sub = std::make_shared<message_filters::Subscriber<ImageMsg> >(this, "/camera/camera/aligned_depth_to_color/image_raw/compressedDepth");
+    // depth_sub = std::make_shared<message_filters::Subscriber<ImageMsg> >(this, "/camera/camera/aligned_depth_to_color/image_raw");
 
     localBApublisher_ = this->create_publisher<std_msgs::msg::String>("/localBA", 10);
 
@@ -53,15 +54,16 @@ RealsenseD455SlamNode::RealsenseD455SlamNode(ORB_SLAM3::System* pSLAM)
     tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
     orb_to_map_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
-    syncExact = std::make_shared<message_filters::Synchronizer<exact_sync_policy> >(exact_sync_policy(10), *rgb_sub, *depth_sub);
+    // syncExact = std::make_shared<message_filters::Synchronizer<exact_sync_policy> >(exact_sync_policy(10), *rgb_sub, *depth_sub);
 
-    syncExact->registerCallback(&RealsenseD455SlamNode::GrabRGBD, this);
+    // syncExact->registerCallback(&WrappedRealsenseD455SlamNode::GrabRGBD, this);
 
+    run();
 
 
 }
 
-RealsenseD455SlamNode::~RealsenseD455SlamNode()
+WrappedRealsenseD455SlamNode::~WrappedRealsenseD455SlamNode()
 {
 
     // Stop all threads
@@ -72,15 +74,12 @@ RealsenseD455SlamNode::~RealsenseD455SlamNode()
 
 }
 
-void RealsenseD455SlamNode::GrabRGBD(const ImageMsg::SharedPtr msgRGB, const ImageMsg::SharedPtr msgD)
+void WrappedRealsenseD455SlamNode::GrabRGBD(const ImageMsg::SharedPtr msgRGB, const ImageMsg::SharedPtr msgD)
 {
     // Copy the ros rgb image message to cv::Mat.
-
-    cv::Mat rgb_im, depth_im;
     try
     {
-        // cv_ptrRGB = cv_bridge::toCvShare(msgRGB);
-        rgb_im = cv::imdecode(cv::Mat(msgRGB->data), cv::IMREAD_COLOR);
+        cv_ptrRGB = cv_bridge::toCvShare(msgRGB);
     }
     catch (cv_bridge::Exception& e)
     {
@@ -88,17 +87,10 @@ void RealsenseD455SlamNode::GrabRGBD(const ImageMsg::SharedPtr msgRGB, const Ima
         return;
     }
 
-    
     // Copy the ros depth image message to cv::Mat.
     try
     {
-        // cv_ptrD = cv_bridge::toCvShare(msgD);
-
-    // Decode using OpenCV
-    sensor_msgs::msg::Image::SharedPtr temp = compressed_depth_image_transport::decodeCompressedDepthImage(*msgD);
-    cv_ptrD = cv_bridge::toCvShare(temp);
-
-
+        cv_ptrD = cv_bridge::toCvShare(msgD);
     }
     catch (cv_bridge::Exception& e)
     {
@@ -106,11 +98,8 @@ void RealsenseD455SlamNode::GrabRGBD(const ImageMsg::SharedPtr msgRGB, const Ima
         return;
     }
 
-    // cv::imshow("RGB", rgb_im);
-
-    // cv::imshow("Depth", cv_ptr_depth->image);
     
-    mLastPose = m_SLAM->TrackRGBD(rgb_im, cv_ptrD->image, Utility::StampToSec(msgRGB->header.stamp));
+    mLastPose = m_SLAM->TrackRGBD(cv_ptrRGB->image, cv_ptrD->image, Utility::StampToSec(msgRGB->header.stamp));
 
     publishTrackedPose();
 
@@ -141,7 +130,7 @@ void RealsenseD455SlamNode::GrabRGBD(const ImageMsg::SharedPtr msgRGB, const Ima
     }
 }
 
-void RealsenseD455SlamNode::publishPoseWithCovariance(const Sophus::SE3f &Tcw, const Eigen::Matrix<float, 6, 6> &covariance) 
+void WrappedRealsenseD455SlamNode::publishPoseWithCovariance(const Sophus::SE3f &Tcw, const Eigen::Matrix<float, 6, 6> &covariance) 
 {
 
         // Create PoseWithCovarianceStamped message
@@ -209,7 +198,7 @@ void RealsenseD455SlamNode::publishPoseWithCovariance(const Sophus::SE3f &Tcw, c
 }
 
 
-void RealsenseD455SlamNode::publishLandmarks()
+void WrappedRealsenseD455SlamNode::publishLandmarks()
 {
     // Create UncertainPointCloud message
     uncertain_pointcloud_msgs::msg::UncertainPointCloud point_cloud_msg;
@@ -250,7 +239,7 @@ void RealsenseD455SlamNode::publishLandmarks()
     point_cloud_pub_->publish(point_cloud_msg);
 }
 
-void RealsenseD455SlamNode::publishTrackedPose()
+void WrappedRealsenseD455SlamNode::publishTrackedPose()
 {
     // Create PoseWithCovarianceStamped message
     geometry_msgs::msg::PoseStamped pose_msg;
@@ -334,7 +323,7 @@ void RealsenseD455SlamNode::publishTrackedPose()
 }
 
 
-void RealsenseD455SlamNode::run()
+void WrappedRealsenseD455SlamNode::run()
 {
     // Initialize the camera
     rs2::context ctx;
@@ -474,6 +463,7 @@ void RealsenseD455SlamNode::run()
 
     rs2::stream_profile cam_stream = pipe_profile.get_stream(RS2_STREAM_COLOR);
 
+
     rs2_intrinsics intrinsics_cam = cam_stream.as<rs2::video_stream_profile>().get_intrinsics();
     width_img = intrinsics_cam.width;
     height_img = intrinsics_cam.height;
@@ -533,6 +523,7 @@ void RealsenseD455SlamNode::run()
         im = cv::Mat(cv::Size(width_img, height_img), CV_8UC3, (void*)(color_frame.get_data()), cv::Mat::AUTO_STEP);
         depth = cv::Mat(cv::Size(width_img, height_img), CV_16U, (void*)(depth_frame.get_data()), cv::Mat::AUTO_STEP);
 
+
         /*cv::Mat depthCV_8U;
         depthCV.convertTo(depthCV_8U,CV_8U,0.01);
         cv::imshow("depth image", depthCV_8U);*/
@@ -555,6 +546,7 @@ void RealsenseD455SlamNode::run()
         std::map<int, Sophus::SE3f> ps;
         std::map<int, Eigen::Vector3f> ls;
 
+
         // Check if local BA was performed
         if(m_SLAM->GetCovariances(pCovs, lCovs))
         {
@@ -564,6 +556,7 @@ void RealsenseD455SlamNode::run()
             
             Eigen::Matrix<float, 6, 6> latestCov = pCovs.rbegin()->second;
 
+            
             publishPoseWithCovariance(latestPose, latestCov);
             std_msgs::msg::String msg;
             msg.data = "Local BA performed";
@@ -581,7 +574,7 @@ void RealsenseD455SlamNode::run()
 
 
 
-rs2_stream RealsenseD455SlamNode::find_stream_to_align(const std::vector<rs2::stream_profile>& streams)
+rs2_stream WrappedRealsenseD455SlamNode::find_stream_to_align(const std::vector<rs2::stream_profile>& streams)
 {
     //Given a vector of streams, we try to find a depth stream and another stream to align depth with.
     //We prioritize color streams to make the view look better.
@@ -618,7 +611,7 @@ rs2_stream RealsenseD455SlamNode::find_stream_to_align(const std::vector<rs2::st
 }
 
 
-bool RealsenseD455SlamNode::profile_changed(const std::vector<rs2::stream_profile>& current, const std::vector<rs2::stream_profile>& prev)
+bool WrappedRealsenseD455SlamNode::profile_changed(const std::vector<rs2::stream_profile>& current, const std::vector<rs2::stream_profile>& prev)
 {
     for (auto&& sp : prev)
     {

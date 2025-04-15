@@ -75,7 +75,6 @@ void SimulationRGBDSlamNode::GrabRGBD(const sensor_msgs::msg::Image::SharedPtr m
         return;
     }
 
-    // std::cout << "Depth image:\n" << cv_ptrD->image << std::endl;
 
     // Convert the PointCloud2 message to cv::Mat
 
