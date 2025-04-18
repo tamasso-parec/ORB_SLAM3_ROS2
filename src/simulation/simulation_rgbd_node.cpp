@@ -75,9 +75,6 @@ void SimulationRGBDSlamNode::GrabRGBD(const sensor_msgs::msg::Image::SharedPtr m
         return;
     }
 
-
-    // Convert the PointCloud2 message to cv::Mat
-
     mLastPose = m_SLAM->TrackRGBD(cv_ptrRGB->image, 1000*cv_ptrD->image, Utility::StampToSec(msgRGB->header.stamp));
 
     publishTrackedPose();
@@ -160,7 +157,7 @@ void SimulationRGBDSlamNode::publishPoseWithCovariance(const Sophus::SE3f &Tcw, 
         // Create PoseWithCovarianceStamped message
         geometry_msgs::msg::PoseWithCovarianceStamped pose_msg;
         pose_msg.header.stamp = this->now();
-        pose_msg.header.frame_id = "map";  // Adjust per your TF tree
+        pose_msg.header.frame_id = "slam_map";  // Adjust per your TF tree
 
         // Invert the transformation
         Sophus::SE3f Twc = Tcw.inverse();
@@ -199,7 +196,7 @@ void SimulationRGBDSlamNode::publishPoseWithCovariance(const Sophus::SE3f &Tcw, 
 
         // transform_msg.header.stamp = this->now();
         // transform_msg.header.frame_id = "camera_depth_optical_frame";
-        // transform_msg.child_frame_id = "map";  // Adjust per your TF tree
+        // transform_msg.child_frame_id = "slam_map";  // Adjust per your TF tree
 
         // // Eigen::Matrix3f R_base_to_cam;
         // // R_base_to_cam = Eigen::AngleAxisf(-M_PI / 2, Eigen::Vector3f::UnitY()); // 90° rotation around Y-axis
@@ -227,7 +224,7 @@ void SimulationRGBDSlamNode::publishLandmarks()
     // Create UncertainPointCloud message
     uncertain_pointcloud_msgs::msg::UncertainPointCloud point_cloud_msg;
     point_cloud_msg.header.stamp = this->now();
-    point_cloud_msg.header.frame_id = "map";  // Adjust per your TF tree
+    point_cloud_msg.header.frame_id = "slam_map";  // Adjust per your TF tree
 
     point_cloud_msg.points.reserve(mlocalLandmarks.size());
 
@@ -297,8 +294,8 @@ void SimulationRGBDSlamNode::publishTrackedPose()
 
 
     transform_msg.header.stamp = this->now();
-    transform_msg.header.frame_id = "camera_depth_optical_frame";
-    transform_msg.child_frame_id = "map";  
+    transform_msg.header.frame_id = "camera_color_optical_frame";
+    transform_msg.child_frame_id = "slam_map";  
 
     // Eigen::Matrix3f R_base_to_cam;
     // R_base_to_cam = Eigen::AngleAxisf(-M_PI / 2, Eigen::Vector3f::UnitY()); // 90° rotation around Y-axis
@@ -320,7 +317,7 @@ void SimulationRGBDSlamNode::publishTrackedPose()
     tf_broadcaster_->sendTransform(transform_msg);
 
     transform_msg.header.stamp = this->now();
-    transform_msg.header.frame_id = "map";
+    transform_msg.header.frame_id = "slam_map";
     transform_msg.child_frame_id = "world";  // Adjust per your TF tree
 
     // Eigen::Matrix3f R_base_to_cam;
