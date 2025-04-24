@@ -75,7 +75,7 @@ void SimulationRGBDSlamNode::GrabRGBD(const sensor_msgs::msg::Image::SharedPtr m
         return;
     }
 
-    mLastPose = m_SLAM->TrackRGBD(cv_ptrRGB->image, 1000*cv_ptrD->image, Utility::StampToSec(msgRGB->header.stamp));
+    mLastPose = m_SLAM->TrackRGBD(cv_ptrRGB->image, cv_ptrD->image, Utility::StampToSec(msgRGB->header.stamp));
 
     publishTrackedPose();
 
@@ -265,16 +265,19 @@ void SimulationRGBDSlamNode::publishTrackedPose()
     // Create PoseWithCovarianceStamped message
     geometry_msgs::msg::PoseStamped pose_msg;
     pose_msg.header.stamp = this->now();
-    pose_msg.header.frame_id = "camera_depth_optical_frame";  // Adjust per your TF tree
+    pose_msg.header.frame_id = "slam_map";  // Adjust per your TF tree
 
     // Extract translation
-    Eigen::Vector3f t = mLastPose.translation();
+    // Invert the transformation
+    Sophus::SE3f Twc = mLastPose.inverse();
+
+    Eigen::Vector3f t = Twc.translation();
     pose_msg.pose.position.x = t.x();
     pose_msg.pose.position.y = t.y();
     pose_msg.pose.position.z = t.z();
 
     // Convert rotation matrix to quaternion
-    Eigen::Quaternionf q(mLastPose.rotationMatrix());
+    Eigen::Quaternionf q(Twc.rotationMatrix());
     pose_msg.pose.orientation.x = q.x();
     pose_msg.pose.orientation.y = q.y();
     pose_msg.pose.orientation.z = q.z();
@@ -294,8 +297,8 @@ void SimulationRGBDSlamNode::publishTrackedPose()
 
 
     transform_msg.header.stamp = this->now();
-    transform_msg.header.frame_id = "camera_color_optical_frame";
-    transform_msg.child_frame_id = "slam_map";  
+    transform_msg.header.frame_id = "slam_map";
+    transform_msg.child_frame_id = "camera_color_optical_frame";  
 
     // Eigen::Matrix3f R_base_to_cam;
     // R_base_to_cam = Eigen::AngleAxisf(-M_PI / 2, Eigen::Vector3f::UnitY()); // 90° rotation around Y-axis
@@ -316,29 +319,29 @@ void SimulationRGBDSlamNode::publishTrackedPose()
     // Send TF transform
     tf_broadcaster_->sendTransform(transform_msg);
 
-    transform_msg.header.stamp = this->now();
-    transform_msg.header.frame_id = "slam_map";
-    transform_msg.child_frame_id = "world";  // Adjust per your TF tree
+    // transform_msg.header.stamp = this->now();
+    // transform_msg.header.frame_id = "slam_map";
+    // transform_msg.child_frame_id = "world";  // Adjust per your TF tree
 
-    // Eigen::Matrix3f R_base_to_cam;
-    // R_base_to_cam = Eigen::AngleAxisf(-M_PI / 2, Eigen::Vector3f::UnitY()); // 90° rotation around Y-axis
+    // // Eigen::Matrix3f R_base_to_cam;
+    // // R_base_to_cam = Eigen::AngleAxisf(-M_PI / 2, Eigen::Vector3f::UnitY()); // 90° rotation around Y-axis
 
-    // Eigen::Quaternionf q_base_to_cam(R_base_to_cam);
+    // // Eigen::Quaternionf q_base_to_cam(R_base_to_cam);
 
-    // q = q_base_to_cam * q;
-    Eigen::Quaternionf q_world_to_map(0.5, -0.5, 0.5, -0.5);
-    Eigen::Quaternionf q_map_to_world = q_world_to_map.inverse();
+    // // q = q_base_to_cam * q;
+    // Eigen::Quaternionf q_world_to_map(0.5, -0.5, 0.5, -0.5);
+    // Eigen::Quaternionf q_map_to_world = q_world_to_map.inverse();
 
 
-    transform_msg.transform.translation.x = 0;
-    transform_msg.transform.translation.y = 0;
-    transform_msg.transform.translation.z = 0;
+    // transform_msg.transform.translation.x = 0;
+    // transform_msg.transform.translation.y = 0;
+    // transform_msg.transform.translation.z = 0;
 
-    transform_msg.transform.rotation.x = q_map_to_world.x();
-    transform_msg.transform.rotation.y = q_map_to_world.y();
-    transform_msg.transform.rotation.z = q_map_to_world.z();
-    transform_msg.transform.rotation.w = q_map_to_world.w();
+    // transform_msg.transform.rotation.x = q_map_to_world.x();
+    // transform_msg.transform.rotation.y = q_map_to_world.y();
+    // transform_msg.transform.rotation.z = q_map_to_world.z();
+    // transform_msg.transform.rotation.w = q_map_to_world.w();
 
-    // Send TF transform
-    orb_to_map_broadcaster_->sendTransform(transform_msg);
+    // // Send TF transform
+    // orb_to_map_broadcaster_->sendTransform(transform_msg);
 }
