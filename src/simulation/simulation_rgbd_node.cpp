@@ -234,21 +234,37 @@ void SimulationRGBDSlamNode::publishLandmarks()
         // Create PointWithCovariance message
         uncertain_pointcloud_msgs::msg::UncertainPoint point_msg;
 
+
         // Extract landmark position
         Eigen::Vector3f p = landmark.second;
+
+        // Check if position contains NaN or infinity
+        if (!std::isfinite(p.x()) || !std::isfinite(p.y()) || !std::isfinite(p.z())) {
+            RCLCPP_WARN(this->get_logger(), "Skipping landmark with invalid position.");
+            continue;
+        }
+
         point_msg.x = p.x();
         point_msg.y = p.y();
         point_msg.z = p.z();
         
         // Extract landmark covariance
         Eigen::Matrix<float, 3, 3>& cov = landmarkCovs[landmark.first];
-        
+
+        // Check if covariance contains NaN or infinity
+        if (!std::isfinite(cov(0, 0)) || !std::isfinite(cov(0, 1)) || !std::isfinite(cov(0, 2)) ||
+            !std::isfinite(cov(1, 1)) || !std::isfinite(cov(1, 2)) || !std::isfinite(cov(2, 2))) {
+            cov = Eigen::Matrix3f::Identity();  // Set to identity if invalid
+
+        }
+
         point_msg.covariance[0] = cov(0, 0);
         point_msg.covariance[1] = cov(0, 1);
         point_msg.covariance[2] = cov(0, 2);
         point_msg.covariance[3] = cov(1, 1);
         point_msg.covariance[4] = cov(1, 2);
         point_msg.covariance[5] = cov(2, 2);
+
 
         // Add point to point cloud
         point_cloud_msg.points.push_back(point_msg);
