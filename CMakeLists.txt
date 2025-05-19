@@ -29,6 +29,7 @@ find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(uncertain_pointcloud_msgs REQUIRED)   
 find_package(realsense2 REQUIRED)
+find_package(px4_msgs REQUIRED)
 
 
 
@@ -115,6 +116,18 @@ rclcpp tf2 tf2_ros sensor_msgs cv_bridge message_filters ORB_SLAM3 Pangolin Open
 # ==============================================================================================================================================
 # ==============================================================================================================================================
 
+add_executable(fake_rgbd
+  src/simulation/fake_rgbd_node.cpp
+  src/simulation/fake_rgbd.cpp
+)
+
+ament_target_dependencies(fake_rgbd 
+rclcpp tf2 tf2_ros sensor_msgs cv_bridge message_filters ORB_SLAM3 Pangolin OpenCV uncertain_pointcloud_msgs px4_msgs)
+
+# ==============================================================================================================================================
+# ==============================================================================================================================================
+# ==============================================================================================================================================
+
 add_executable(stereo
 src/stereo/stereo.cpp
 src/stereo/stereo-slam-node.cpp
@@ -134,7 +147,7 @@ ament_target_dependencies(stereo-inertial rclcpp sensor_msgs cv_bridge ORB_SLAM3
 # ==============================================================================================================================================
 # ==============================================================================================================================================
 
-install(TARGETS mono rgbd realsense_d455 stereo stereo-inertial simulation_rgbd DESTINATION lib/${PROJECT_NAME})
+install(TARGETS mono rgbd realsense_d455 stereo stereo-inertial simulation_rgbd fake_rgbd DESTINATION lib/${PROJECT_NAME})
 
 
 install(

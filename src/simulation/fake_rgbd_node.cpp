@@ -1,0 +1,332 @@
+
+#include "fake_rgbd_node.hpp"
+
+#include <opencv2/core/core.hpp>
+
+using std::placeholders::_1;
+
+FakeRGBDSlamNode::FakeRGBDSlamNode()
+:   Node("ORB_SLAM3_ROS2")
+{
+    rmw_qos_profile_t qos_profile = rmw_qos_profile_sensor_data;
+    auto qos = rclcpp::QoS(rclcpp::QoSInitialization(qos_profile.history, 5), qos_profile);
+
+    // Create a timer to periodically perform tasks
+    timer_ = this->create_wall_timer(
+        std::chrono::milliseconds(500),  // Adjust the interval as needed
+        std::bind(&FakeRGBDSlamNode::timerCallback, this));
+
+    pcl_sub   = this->create_subscription<PclMsg>(
+        "/x500_realsense/point_cloud", 10, std::bind(&FakeRGBDSlamNode::PointcloudCallback, this, _1));
+
+    pose_sub = this->create_subscription<px4_msgs::msg::VehicleOdometry>(
+        "/fmu/out/vehicle_odometry", qos, std::bind(&FakeRGBDSlamNode::trackedPoseCallback, this, _1));
+
+
+    localBApublisher_ = this->create_publisher<std_msgs::msg::String>("/localBA", 10);
+
+    pose_cov_pub_ = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("/slam/pose_with_covariance", 10);
+    pose_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("/slam/tracked_pose", 10);
+
+    point_cloud_pub_ = this->create_publisher<uncertain_pointcloud_msgs::msg::UncertainPointCloud>("/slam/uncertain_point_cloud", 10);
+    
+    // TF2 broadcaster
+    tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+    orb_to_map_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+
+
+
+}
+
+FakeRGBDSlamNode::~FakeRGBDSlamNode()
+{
+
+    // Stop all threads
+    m_SLAM->Shutdown();
+
+    // Save camera trajectory
+    m_SLAM->SaveKeyFrameTrajectoryTUM("KeyFrameTrajectory.txt");
+
+}
+
+void FakeRGBDSlamNode::PointcloudCallback(const PclMsg::SharedPtr msgPcl)
+{
+
+
+
+
+    // Check if local BA was performed
+    if(fake_lba_flag)
+    {
+        
+
+        Sophus::SE3f latestPose = mLastPose;
+        
+        Eigen::Matrix<float, 6, 6> latestCov = Eigen::Matrix<float, 6, 6>::Identity();
+
+        
+        publishPoseWithCovariance(latestPose, latestCov);
+        // std_msgs::msg::String msg;
+        // msg.data = "Local BA performed";
+        // localBApublisher_->publish(msg);
+
+        publishLandmarks(msgPcl);
+
+        fake_lba_flag = false;
+
+    }
+}
+
+void FakeRGBDSlamNode::convertPcl2cv(const PclMsg::SharedPtr cloud)
+{
+    
+    // Initialize an OpenCV Mat with the same height and width as the PointCloud2
+    cv::Mat img(cloud->height, cloud->width, CV_32FC1, cv::Scalar(0));
+
+    sensor_msgs::PointCloud2ConstIterator<float> iter_z(*cloud, "z");
+
+    for (size_t i{0}; i < cloud->width * cloud->height; ++i, ++iter_z)
+    {
+        if (std::isnan(*iter_z))
+        {
+            img.at<float>(i / cloud->width, i % cloud->width) = 0;
+        }
+        else
+        {
+            img.at<float>(i / cloud->width, i % cloud->width) = *iter_z;
+        }
+    }
+
+    // // Iterate through the organized point cloud
+    // for (size_t row = 0; row < cloud->height; ++row)
+    // {
+    //     for (size_t col = 0; col < cloud->width; ++col)
+    //     {
+    //         const auto& point = cloud->data[row * cloud->width + col];
+    //         size_t u = col;
+    //         size_t v = cloud->height-row-1; //image coordinates are flipped
+    //         // Check if the point is valid (not NaN)
+    //         // if (pcl::isFinite(point))
+    //         {
+    //             // Calculate the range value (distance from the origin)
+    //             // float range = point.z;
+                
+    //             img.at<float>(v, u) = point.z; // access as [row, col]
+    //         }
+    //         // else
+    //         // {
+    //         //     img.at<float>(v, u) = 0; // Set invalid points to 0
+    //         // }
+    //     }
+    // }
+    cv_ptrD = std::make_shared<const cv_bridge::CvImage>(cv_bridge::CvImage(cloud->header, sensor_msgs::image_encodings::TYPE_32FC1, img));
+}
+
+void FakeRGBDSlamNode::publishPoseWithCovariance(const Sophus::SE3f &Tcw, const Eigen::Matrix<float, 6, 6> &covariance) 
+{
+
+        // Create PoseWithCovarianceStamped message
+        geometry_msgs::msg::PoseWithCovarianceStamped pose_msg;
+        pose_msg.header.stamp = this->now();
+        pose_msg.header.frame_id = "slam_map";  // Adjust per your TF tree
+
+        // TODO: rotation has to be in slam_map frame
+
+        // Extract translation
+        Eigen::Vector3f t = Twc.translation();
+        pose_msg.pose.pose.position.x = t.x();
+        pose_msg.pose.pose.position.y = t.y();
+        pose_msg.pose.pose.position.z = t.z();
+
+        // Convert rotation matrix to quaternion
+        Eigen::Quaternionf q(Twc.rotationMatrix());
+        pose_msg.pose.pose.orientation.x = q.x();
+        pose_msg.pose.pose.orientation.y = q.y();
+        pose_msg.pose.pose.orientation.z = q.z();
+        pose_msg.pose.pose.orientation.w = q.w();
+
+        // Convert 6x6 Eigen covariance matrix to ROS array format
+        for (int i = 0; i < 6; ++i) 
+        {
+            for (int j = 0; j < 6; ++j) 
+            {
+                pose_msg.pose.covariance[i * 6 + j] = covariance(i, j);
+            }
+        }
+
+        // Publish pose with covariance
+        pose_cov_pub_->publish(pose_msg);
+
+        // Also publish TF transform
+        // geometry_msgs::msg::TransformStamped transform_msg;
+
+        // Sophus::SE3f Twc = Tcw.inverse();
+        // Eigen::Vector3f t_inv = Twc.translation();
+        // Eigen::Quaternionf q_inv(Twc.rotationMatrix());
+
+        // transform_msg.header.stamp = this->now();
+        // transform_msg.header.frame_id = "camera_depth_optical_frame";
+        // transform_msg.child_frame_id = "slam_map";  // Adjust per your TF tree
+
+        // // Eigen::Matrix3f R_base_to_cam;
+        // // R_base_to_cam = Eigen::AngleAxisf(-M_PI / 2, Eigen::Vector3f::UnitY()); // 90° rotation around Y-axis
+
+        // // Eigen::Quaternionf q_base_to_cam(R_base_to_cam);
+
+        // // q = q_base_to_cam * q;
+        
+        // transform_msg.transform.translation.x = t_inv.x();
+        // transform_msg.transform.translation.y = t_inv.y();
+        // transform_msg.transform.translation.z = t_inv.z();
+
+        // transform_msg.transform.rotation.x = q_inv.x();
+        // transform_msg.transform.rotation.y = q_inv.y();
+        // transform_msg.transform.rotation.z = q_inv.z();
+        // transform_msg.transform.rotation.w = q_inv.w();
+
+        // // Send TF transform
+        // tf_broadcaster_->sendTransform(transform_msg);
+}
+
+
+void FakeRGBDSlamNode::publishLandmarks(const PclMsg::SharedPtr msgPcl)
+{
+    // Create UncertainPointCloud message
+    uncertain_pointcloud_msgs::msg::UncertainPointCloud point_cloud_msg;
+    point_cloud_msg.header.stamp = this->now();
+    point_cloud_msg.header.frame_id = "slam_map";  
+
+    point_cloud_msg.points.reserve(mlocalLandmarks.size());
+
+    // Iterate through the PointCloud2 message
+    sensor_msgs::PointCloud2ConstIterator<float> iter_x(*msgPcl, "x");
+    sensor_msgs::PointCloud2ConstIterator<float> iter_y(*msgPcl, "y");
+    sensor_msgs::PointCloud2ConstIterator<float> iter_z(*msgPcl, "z");
+
+    int point_counter = 0;
+
+    for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z) 
+    {
+        if (point_counter++ % 200 != 0) 
+        {
+            continue;
+        }
+        // Check if the point is valid
+        if (std::isfinite(*iter_x) && std::isfinite(*iter_y) && std::isfinite(*iter_z)) 
+        {
+            uncertain_pointcloud_msgs::msg::UncertainPoint point_msg;
+
+            
+
+            Eigen::Vector4f homogeneous_point_cam(-*iter_y, -*iter_z,*iter_x,  1.0f);
+            // Eigen::Vector4f homogeneous_point_cam(-*iter_y,  *iter_z,*iter_x,  1.0f);
+            Eigen::Vector3f homogeneous_point_world = (Twc * homogeneous_point_cam).head<3>();
+            
+            // Rotate the points to be in the camera optical frame
+            point_msg.x = homogeneous_point_world[0];          // x in camera frame corresponds to -y in drone frame
+            point_msg.y = homogeneous_point_world[1];          // y in camera frame corresponds to -z in drone frame
+            point_msg.z = homogeneous_point_world[2];           // z in camera frame corresponds to x in drone frame
+
+            // Set default covariance as identity if not provided
+            point_msg.covariance[0] = 1.0f;  // xx
+            point_msg.covariance[1] = 0.0f;  // xy
+            point_msg.covariance[2] = 0.0f;  // xz
+            point_msg.covariance[3] = 1.0f;  // yy
+            point_msg.covariance[4] = 0.0f;  // yz
+            point_msg.covariance[5] = 1.0f;  // zz
+
+            // Add point to the point cloud message
+            point_cloud_msg.points.push_back(point_msg);
+        }
+    }
+
+    
+
+    // Publish point cloud
+    point_cloud_pub_->publish(point_cloud_msg);
+}
+
+void FakeRGBDSlamNode::publishTrackedPose()
+{
+    // Create PoseWithCovarianceStamped message
+    geometry_msgs::msg::PoseStamped pose_msg;
+    pose_msg.header.stamp = this->now();
+    pose_msg.header.frame_id = "slam_map";  // Adjust per your TF tree
+
+    // Extract translation
+    // Invert the transformation
+
+    Eigen::Vector3f t = Twc.translation();
+    pose_msg.pose.position.x = t.x();
+    pose_msg.pose.position.y = t.y();
+    pose_msg.pose.position.z = t.z();
+
+    // Convert rotation matrix to quaternion
+    Eigen::Quaternionf q(Twc.rotationMatrix());
+    pose_msg.pose.orientation.x = q.x();
+    pose_msg.pose.orientation.y = q.y();
+    pose_msg.pose.orientation.z = q.z();
+    pose_msg.pose.orientation.w = q.w();
+
+
+    // Publish pose with covariance
+    pose_pub_->publish(pose_msg);
+
+    // Also publish TF transform
+    geometry_msgs::msg::TransformStamped transform_msg;
+
+    // Sophus::SE3f Twc = mLastPose.inverse();
+    // Sophus::SE3f Twc = mLastPose;
+    // Eigen::Vector3f t_inv = mLastPose.translation();
+    // Eigen::Quaternionf q_inv(mLastPose.rotationMatrix());
+
+
+    transform_msg.header.stamp = this->now();
+    transform_msg.header.frame_id = "slam_map";
+    transform_msg.child_frame_id = "camera_color_optical_frame";  
+
+    // Eigen::Matrix3f R_base_to_cam;
+    // R_base_to_cam = Eigen::AngleAxisf(-M_PI / 2, Eigen::Vector3f::UnitY()); // 90° rotation around Y-axis
+
+    // Eigen::Quaternionf q_base_to_cam(R_base_to_cam);
+
+    // q = q_base_to_cam * q;
+    
+    transform_msg.transform.translation.x = t.x();
+    transform_msg.transform.translation.y = t.y();
+    transform_msg.transform.translation.z = t.z();
+
+    transform_msg.transform.rotation.x = q.x();
+    transform_msg.transform.rotation.y = q.y();
+    transform_msg.transform.rotation.z = q.z();
+    transform_msg.transform.rotation.w = q.w();
+
+    // Send TF transform
+    tf_broadcaster_->sendTransform(transform_msg);
+
+    // transform_msg.header.stamp = this->now();
+    // transform_msg.header.frame_id = "slam_map";
+    // transform_msg.child_frame_id = "world";  // Adjust per your TF tree
+
+    // // Eigen::Matrix3f R_base_to_cam;
+    // // R_base_to_cam = Eigen::AngleAxisf(-M_PI / 2, Eigen::Vector3f::UnitY()); // 90° rotation around Y-axis
+
+    // // Eigen::Quaternionf q_base_to_cam(R_base_to_cam);
+
+    // // q = q_base_to_cam * q;
+    // Eigen::Quaternionf q_world_to_map(0.5, -0.5, 0.5, -0.5);
+    // Eigen::Quaternionf q_map_to_world = q_world_to_map.inverse();
+
+
+    // transform_msg.transform.translation.x = 0;
+    // transform_msg.transform.translation.y = 0;
+    // transform_msg.transform.translation.z = 0;
+
+    // transform_msg.transform.rotation.x = q_map_to_world.x();
+    // transform_msg.transform.rotation.y = q_map_to_world.y();
+    // transform_msg.transform.rotation.z = q_map_to_world.z();
+    // transform_msg.transform.rotation.w = q_map_to_world.w();
+
+    // // Send TF transform
+    // orb_to_map_broadcaster_->sendTransform(transform_msg);
+}

@@ -19,6 +19,7 @@
   <depend>Pangolin</depend>
   <depend>uncertain_pointcloud_msgs</depend>
   <depend>realsense2</depend>
+  <depend>px4_msgs</depend>
 
 
   <export>
