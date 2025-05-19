@@ -13,7 +13,7 @@ FakeRGBDSlamNode::FakeRGBDSlamNode()
 
     // Create a timer to periodically perform tasks
     timer_ = this->create_wall_timer(
-        std::chrono::milliseconds(500),  // Adjust the interval as needed
+        std::chrono::milliseconds(800),  // Adjust the interval as needed
         std::bind(&FakeRGBDSlamNode::timerCallback, this));
 
     pcl_sub   = this->create_subscription<PclMsg>(
@@ -205,9 +205,11 @@ void FakeRGBDSlamNode::publishLandmarks(const PclMsg::SharedPtr msgPcl)
 
     int point_counter = 0;
 
+    std::deque<Eigen::Vector3f> previous_points;
+
     for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z) 
     {
-        if (point_counter++ % 200 != 0) 
+        if (point_counter++ % 400 != 0) 
         {
             continue;
         }
@@ -219,6 +221,15 @@ void FakeRGBDSlamNode::publishLandmarks(const PclMsg::SharedPtr msgPcl)
             
 
             Eigen::Vector4f homogeneous_point_cam(-*iter_y, -*iter_z,*iter_x,  1.0f);
+
+            float depth = *iter_x;
+
+            float sigma_z = depth * depth *0.01f / (0.5f ); // Adjust the scaling factor as needed
+
+            Eigen::Matrix3f cov_world;
+            cov_world.setZero();
+            cov_world.diagonal() = 0.01f * Eigen::Vector3f::Random() + Eigen::Vector3f::UnitZ() * sigma_z;
+
             // Eigen::Vector4f homogeneous_point_cam(-*iter_y,  *iter_z,*iter_x,  1.0f);
             Eigen::Vector3f homogeneous_point_world = (Twc * homogeneous_point_cam).head<3>();
             
@@ -227,13 +238,37 @@ void FakeRGBDSlamNode::publishLandmarks(const PclMsg::SharedPtr msgPcl)
             point_msg.y = homogeneous_point_world[1];          // y in camera frame corresponds to -z in drone frame
             point_msg.z = homogeneous_point_world[2];           // z in camera frame corresponds to x in drone frame
 
+
+            if (previous_points.size() > 2)
+            {
+                Eigen::MatrixXf diffs(3, previous_points.size());
+                for (size_t i = 0; i < previous_points.size(); ++i)
+                {
+                    diffs.col(i) = homogeneous_point_cam.head<3>() - previous_points[i];
+                }
+
+                Eigen::Vector3f means = diffs.rowwise().mean();
+                Eigen::MatrixXf centered = diffs.colwise() - means;
+                Eigen::Matrix3f cov = 0.01f*(centered * centered.transpose()) / float(previous_points.size() - 1);
+
+
+                cov_world = Twc.rotationMatrix() * cov * Twc.rotationMatrix().transpose();
+            }
+
+            // Set the covariance matrix
             // Set default covariance as identity if not provided
-            point_msg.covariance[0] = 1.0f;  // xx
-            point_msg.covariance[1] = 0.0f;  // xy
-            point_msg.covariance[2] = 0.0f;  // xz
-            point_msg.covariance[3] = 1.0f;  // yy
-            point_msg.covariance[4] = 0.0f;  // yz
-            point_msg.covariance[5] = 1.0f;  // zz
+            point_msg.covariance[0] = cov_world(0,0);  // xx
+            point_msg.covariance[1] = cov_world(0,1);  // xy
+            point_msg.covariance[2] = cov_world(0,2);  // xz
+            point_msg.covariance[3] = cov_world(1,1);  // yy
+            point_msg.covariance[4] = cov_world(1,2);  // yz
+            point_msg.covariance[5] = cov_world(2,2);  // zz
+            
+            previous_points.push_back(homogeneous_point_cam.head<3>());
+            if (previous_points.size() > 10)
+            {
+                previous_points.pop_front();
+            }
 
             // Add point to the point cloud message
             point_cloud_msg.points.push_back(point_msg);
