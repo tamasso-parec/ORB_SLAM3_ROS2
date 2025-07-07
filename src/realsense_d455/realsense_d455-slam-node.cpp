@@ -112,6 +112,9 @@ void RealsenseD455SlamNode::GrabRGBD(const ImageMsg::SharedPtr msgRGB, const Ima
     
     mLastPose = m_SLAM->TrackRGBD(rgb_im, cv_ptrD->image, Utility::StampToSec(msgRGB->header.stamp));
 
+    std::vector<ORB_SLAM3::MapPoint*> trackedPoints = m_SLAM->GetTrackedMapPoints();
+
+
     publishTrackedPose();
 
     std::map<int, poseCov_t> pCovs;

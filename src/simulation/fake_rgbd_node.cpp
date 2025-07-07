@@ -13,7 +13,7 @@ FakeRGBDSlamNode::FakeRGBDSlamNode()
 
     // Create a timer to periodically perform tasks
     timer_ = this->create_wall_timer(
-        std::chrono::milliseconds(800),  // Adjust the interval as needed
+        std::chrono::milliseconds(100),  // Adjust the interval as needed
         std::bind(&FakeRGBDSlamNode::timerCallback, this));
 
     pcl_sub   = this->create_subscription<PclMsg>(

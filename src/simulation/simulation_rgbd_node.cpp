@@ -30,7 +30,6 @@ SimulationRGBDSlamNode::SimulationRGBDSlamNode(ORB_SLAM3::System* pSLAM)
 
     syncExact = std::make_shared<message_filters::Synchronizer<exact_sync_policy> >(exact_sync_policy(10), *rgb_sub, *depth_sub);
 
-
     // syncExact = std::make_shared<message_filters::Synchronizer<exact_sync_policy> >(exact_sync_policy(10), *rgb_sub, *pcl_sub);
     // syncApproximate = std::make_shared<message_filters::Synchronizer<approximate_sync_policy> >(approximate_sync_policy(10), *rgb_sub, *pcl_sub);
 
@@ -77,7 +76,45 @@ void SimulationRGBDSlamNode::GrabRGBD(const sensor_msgs::msg::Image::SharedPtr m
 
     mLastPose = m_SLAM->TrackRGBD(cv_ptrRGB->image, cv_ptrD->image, Utility::StampToSec(msgRGB->header.stamp));
 
-    publishTrackedPose();
+    std::vector<ORB_SLAM3::MapPoint*> mapPoints = m_SLAM->GetTrackedMapPoints();
+
+
+
+    if (mapPoints.empty())
+    {
+        RCLCPP_WARN(this->get_logger(), "No map points tracked.");
+        return;
+    }
+
+
+    for (const auto& mp : mapPoints)
+    {
+        if (!mp)
+        {
+            // RCLCPP_WARN(this->get_logger(), "Map point is null.");
+            continue;
+        }
+        // Check if the map point is valid
+        if (mp->isBad())
+            continue;
+
+        // Extract landmark position
+        Eigen::Vector3f p = mp->GetWorldPos();
+
+        // Check if position contains NaN or infinity
+        if (!std::isfinite(p.x()) || !std::isfinite(p.y()) || !std::isfinite(p.z())) {
+            RCLCPP_WARN(this->get_logger(), "Skipping landmark with invalid position.");
+            continue;
+        }
+
+        auto id = mp->GetId();
+        // Store the landmark position in the local landmarks map
+        mlocalLandmarks[id] = p;
+
+        // Store the covariance of the landmark
+        landmarkCovs[id] = mp->GetCovariancePosition();
+    }
+    // publishTrackedPose();
 
     std::map<int, poseCov_t> pCovs;
     std::map<int, landmarkCov_t> lCovs;
@@ -86,24 +123,24 @@ void SimulationRGBDSlamNode::GrabRGBD(const sensor_msgs::msg::Image::SharedPtr m
 
 
     // Check if local BA was performed
-    if(m_SLAM->GetCovariances(pCovs, lCovs))
-    {
-        m_SLAM->getLocalPosesAndLandmarks( ps, mlocalLandmarks);
+    // if(m_SLAM->GetCovariances(pCovs, lCovs))
+    // {
+    //     m_SLAM->getLocalPosesAndLandmarks( ps, mlocalLandmarks);
 
-        Sophus::SE3f latestPose = ps.rbegin()->second;
+    //     Sophus::SE3f latestPose = ps.rbegin()->second;
         
-        Eigen::Matrix<float, 6, 6> latestCov = pCovs.rbegin()->second;
+    //     Eigen::Matrix<float, 6, 6> latestCov = pCovs.rbegin()->second;
 
         
-        publishPoseWithCovariance(latestPose, latestCov);
-        std_msgs::msg::String msg;
-        msg.data = "Local BA performed";
-        localBApublisher_->publish(msg);
+    //     publishPoseWithCovariance(latestPose, latestCov);
+    //     std_msgs::msg::String msg;
+    //     msg.data = "Local BA performed";
+    //     localBApublisher_->publish(msg);
 
-        publishLandmarks();
+    //     publishLandmarks();
 
-        m_SLAM->reset_new_lba_2_publish_flag();
-    }
+    //     m_SLAM->reset_new_lba_2_publish_flag();
+    // }
 }
 
 void SimulationRGBDSlamNode::convertPcl2cv(const PclMsg::SharedPtr cloud)
