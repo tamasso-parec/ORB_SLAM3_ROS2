@@ -78,7 +78,8 @@ void SimulationRGBDSlamNode::GrabRGBD(const sensor_msgs::msg::Image::SharedPtr m
 
     std::vector<ORB_SLAM3::MapPoint*> mapPoints = m_SLAM->GetTrackedMapPoints();
 
-
+    Eigen::Matrix<float, 6, 6> pose_cov; 
+    pose_cov.setIdentity();
 
     if (mapPoints.empty())
     {
@@ -114,7 +115,10 @@ void SimulationRGBDSlamNode::GrabRGBD(const sensor_msgs::msg::Image::SharedPtr m
         // Store the covariance of the landmark
         landmarkCovs[id] = mp->GetCovariancePosition();
     }
-    // publishTrackedPose();
+    
+    publishTrackedPose();
+    publishPoseWithCovariance(mLastPose, pose_cov);
+    publishLandmarks();
 
     std::map<int, poseCov_t> pCovs;
     std::map<int, landmarkCov_t> lCovs;
