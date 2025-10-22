@@ -30,6 +30,8 @@ find_package(tf2_ros REQUIRED)
 find_package(uncertain_pointcloud_msgs REQUIRED)   
 find_package(realsense2 REQUIRED)
 find_package(px4_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
+
 
 
 
@@ -112,6 +114,20 @@ add_executable(simulation_rgbd
 ament_target_dependencies(simulation_rgbd 
 rclcpp tf2 tf2_ros sensor_msgs cv_bridge message_filters ORB_SLAM3 Pangolin OpenCV uncertain_pointcloud_msgs)
 
+
+# ==============================================================================================================================================
+# ==============================================================================================================================================
+# ==============================================================================================================================================
+
+
+add_executable(simulation_rgbd_evaluator
+  src/simulation/simulation_rgbd_evaluator_node.cpp
+  src/simulation/simulation_rgbd_evaluator.cpp
+)
+
+ament_target_dependencies(simulation_rgbd_evaluator
+rclcpp tf2 tf2_ros sensor_msgs cv_bridge message_filters ORB_SLAM3 Pangolin OpenCV uncertain_pointcloud_msgs visualization_msgs)
+
 # ==============================================================================================================================================
 # ==============================================================================================================================================
 # ==============================================================================================================================================
@@ -147,7 +163,7 @@ ament_target_dependencies(stereo-inertial rclcpp sensor_msgs cv_bridge ORB_SLAM3
 # ==============================================================================================================================================
 # ==============================================================================================================================================
 
-install(TARGETS mono rgbd realsense_d455 stereo stereo-inertial simulation_rgbd fake_rgbd DESTINATION lib/${PROJECT_NAME})
+install(TARGETS mono rgbd realsense_d455 stereo stereo-inertial simulation_rgbd fake_rgbd  simulation_rgbd_evaluator DESTINATION lib/${PROJECT_NAME})
 
 
 install(

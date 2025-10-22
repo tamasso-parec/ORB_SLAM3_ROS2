@@ -35,6 +35,12 @@ FakeRGBDSlamNode::FakeRGBDSlamNode()
     orb_to_map_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
 
+    tf_buffer_ =
+      std::make_unique<tf2_ros::Buffer>(this->get_clock());
+    tf_listener_ =
+      std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
+
 
 }
 
@@ -365,3 +371,88 @@ void FakeRGBDSlamNode::publishTrackedPose()
     // // Send TF transform
     // orb_to_map_broadcaster_->sendTransform(transform_msg);
 }
+
+
+void FakeRGBDSlamNode::trackedPoseCallback(const px4_msgs::msg::VehicleOdometry::SharedPtr msgPose){
+        std::cout << "Pose received" << std::endl;
+
+        geometry_msgs::msg::TransformStamped t_drone_cam, t_map_slammap;
+
+        try {
+          t_drone_cam = tf_buffer_->lookupTransform(
+            "drone", "x500_realsense/realsense_d435/base_link/realsense_d435",
+            tf2::TimePointZero);
+
+            t_map_slammap = tf_buffer_->lookupTransform(
+            "map", "slam_map",
+            tf2::TimePointZero);
+        } catch (const tf2::TransformException & ex) {
+          RCLCPP_INFO(
+            this->get_logger(), "Could not transform %s to %s: %s",
+            "drone", "x500_realsense/realsense_d435/base_link/realsense_d435", ex.what());
+          return;
+        }
+
+        Eigen::Vector3f t_MAP_DRONE(msgPose->position[0],  -msgPose->position[1], -msgPose->position[2]);
+
+        
+        Eigen::Quaternionf q_MAP_SLAMMAP(t_map_slammap.transform.rotation.w,
+                                        t_map_slammap.transform.rotation.x,
+                                        t_map_slammap.transform.rotation.y,
+                                        t_map_slammap.transform.rotation.z);
+
+        Eigen::Quaternionf q_SLAMMAP_MAP = q_MAP_SLAMMAP.inverse();
+
+
+
+        Eigen::Quaternionf q_DRONE_CAM(t_drone_cam.transform.rotation.w,
+                                        t_drone_cam.transform.rotation.x,
+                                        t_drone_cam.transform.rotation.y,
+                                        t_drone_cam.transform.rotation.z);
+
+        Eigen::Matrix4f T_DRONE_CAM = Eigen::Matrix4f::Identity();
+        T_DRONE_CAM.block<3,3>(0,0) = q_DRONE_CAM.toRotationMatrix();
+
+
+        Eigen::Quaternionf q_CAM_DRONE = q_DRONE_CAM.inverse();
+        Eigen::Quaternionf q_SLAMMAP_ROTATEDMAP = q_CAM_DRONE;
+        Eigen::Quaternionf q_MAP_ROTATEDSLAMMAP = q_DRONE_CAM;
+
+        Eigen::Matrix4f T_SLAMMAP_MAP = Eigen::Matrix4f::Identity();
+        T_SLAMMAP_MAP.block<3,1>(0,3) = Eigen::Vector3f(t_drone_cam.transform.translation.x,
+                                                        t_drone_cam.transform.translation.y,
+                                                        t_drone_cam.transform.translation.z);
+        T_SLAMMAP_MAP.block<3,3>(0,0) = q_SLAMMAP_MAP.toRotationMatrix();
+
+        // Rotate the quaternion from the ROS frame to the optical frame
+        Eigen::Quaternionf q_MAP_DRONE(msgPose->q[0], msgPose->q[1], -msgPose->q[2], -msgPose->q[3]); 
+        
+        Eigen::Matrix4f T_MAP_DRONE = Eigen::Matrix4f::Identity();
+        T_MAP_DRONE.block<3, 1>(0, 3) = t_MAP_DRONE;
+        T_MAP_DRONE.block<3, 3>(0, 0) = q_MAP_DRONE.toRotationMatrix(); // Convert quaternion to rotation matrix
+
+        Eigen::Matrix4f T_SLAMMAP_CAM = T_SLAMMAP_MAP * T_MAP_DRONE * T_DRONE_CAM;
+
+
+
+        // Eigen::Quaternionf q_SLAMMAP_CAM = q_SLAMMAP_MAP * q_MAP_DRONE * q_DRONE_CAM;
+
+        
+
+
+        // Eigen::Vector3f t_SLAMMAP_CAM =  q_SLAMMAP_MAP * t_MAP_DRONE 
+
+        
+
+
+
+        // Eigen::Quaternionf q_cam_to_slam_map =  Eigen::Quaternionf(Eigen::AngleAxisf(M_PI / 2, Eigen::Vector3f::UnitZ())) * q_ros;
+        Twc = Sophus::SE3f(T_SLAMMAP_CAM); 
+
+                                // Eigen::Vector3f(msgPose->position[0],  msgPose->position[1], msgPose->position[2])); 
+        mLastPose = Twc;  // Tcw 
+
+        publishTrackedPose();
+
+
+    }

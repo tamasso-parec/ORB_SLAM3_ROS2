@@ -1,5 +1,5 @@
-#ifndef __SIMULATION_RGBD_NODE_HPP__
-#define __SIMULATION_RGBD_NODE_HPP__
+#ifndef __SIMULATION_RGBD_EVALUATION_NODE_HPP__
+#define __SIMULATION_RGBD_EVALUATION_NODE_HPP__
 
 #include <iostream>
 #include <algorithm>
@@ -12,10 +12,6 @@
 #include "sensor_msgs/point_cloud2_iterator.hpp"
 #include "std_msgs/msg/string.hpp"
 
-#include "px4_msgs/msg/vehicle_odometry.hpp"  
-
-
-#include "message_filters/subscriber.h"
 #include "message_filters/subscriber.h"
 #include "message_filters/synchronizer.h"
 #include "message_filters/time_synchronizer.h"
@@ -26,10 +22,10 @@
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include "tf2_ros/transform_broadcaster.h"
-#include "tf2_ros/transform_listener.h"
-#include "tf2_ros/buffer.h"
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <uncertain_pointcloud_msgs/msg/uncertain_point_cloud.hpp>
+
+#include <visualization_msgs/msg/marker.hpp>
 
 #include <cv_bridge/cv_bridge.h>
 
@@ -40,39 +36,33 @@
 
 #include "utility.hpp"
 
-class FakeRGBDSlamNode : public rclcpp::Node
+class SimulationRGBDEvaluationNode : public rclcpp::Node
 {
 public:
 
-    FakeRGBDSlamNode();
+    SimulationRGBDEvaluationNode(ORB_SLAM3::System* pSLAM);
 
-    ~FakeRGBDSlamNode();
+    ~SimulationRGBDEvaluationNode();
 
 private:
     using ImageMsg = sensor_msgs::msg::Image;
     using PclMsg = sensor_msgs::msg::PointCloud2;
 
+    typedef message_filters::sync_policies::ApproximateTime<ImageMsg, ImageMsg> approximate_sync_policy;
+    // typedef message_filters::sync_policies::ApproximateTime<ImageMsg, PclMsg> approximate_sync_policy;
+
+    typedef message_filters::sync_policies::LatestTime<ImageMsg, ImageMsg> latest_sync_policy;
+
+    typedef message_filters::sync_policies::ExactTime<ImageMsg, ImageMsg> exact_sync_policy;
+    // typedef message_filters::sync_policies::ExactTime<ImageMsg, PclMsg> exact_sync_policy;
 
     typedef Eigen::Matrix<float, 6,6> poseCov_t;
     typedef Eigen::Matrix<float, 3,3> landmarkCov_t;
-
-
-    std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
-    std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
     
-    // void GrabRGBD(const ImageMsg::SharedPtr msgRGB, const ImageMsg::SharedPtr msgD);
-    void PointcloudCallback(const PclMsg::SharedPtr msgPcl);
+    void GrabRGBD(const ImageMsg::SharedPtr msgRGB, const ImageMsg::SharedPtr msgD);
     // void GrabRGBD(const sensor_msgs::msg::Image::SharedPtr msgRGB, const PclMsg::SharedPtr msgD);
 
-    void trackedPoseCallback(const px4_msgs::msg::VehicleOdometry::SharedPtr msgPose);
-    
-
     void convertPcl2cv(const PclMsg::SharedPtr msgPcl);
-
-    void timerCallback()
-    {
-        fake_lba_flag = true;
-    }
     
 
     ORB_SLAM3::System* m_SLAM;
@@ -80,13 +70,21 @@ private:
     cv_bridge::CvImageConstPtr cv_ptrRGB;
     cv_bridge::CvImageConstPtr cv_ptrD;
 
-    
-    rclcpp::Subscription<PclMsg>::SharedPtr pcl_sub;
-    rclcpp::Subscription<px4_msgs::msg::VehicleOdometry>::SharedPtr pose_sub;
-    rclcpp::TimerBase::SharedPtr timer_;
+    std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image> > rgb_sub;
+    std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image> > depth_sub;
+    std::shared_ptr<message_filters::Subscriber<PclMsg> > pcl_sub;
 
+    rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pose_cov_sub_;
+
+
+    std::shared_ptr<message_filters::Synchronizer<approximate_sync_policy> > syncApproximate;
+    std::shared_ptr<message_filters::Synchronizer<latest_sync_policy> > syncLatest;
+    std::shared_ptr<message_filters::Synchronizer<exact_sync_policy> > syncExact;
+   
     // Bundle Adjustment results
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr localBApublisher_;
+
+    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr gt_pose_marker_pub_;
 
     rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pose_cov_pub_;
     rclcpp::Publisher<uncertain_pointcloud_msgs::msg::UncertainPointCloud>::SharedPtr point_cloud_pub_;
@@ -101,15 +99,23 @@ private:
     std::map<int, Sophus::SE3f> mlocalPoses;
     std::map<int, Eigen::Vector3f> mlocalLandmarks;
 
-    Sophus::SE3f mLastPose, Twc;
-
-    bool fake_lba_flag = false;
+    Sophus::SE3f mLastPose;
 
     void publishTrackedPose();
 
     void publishPoseWithCovariance(const Sophus::SE3f &Tcw, const Eigen::Matrix<float, 6, 6> &covariance);
 
-    void publishLandmarks(const PclMsg::SharedPtr msgPcl);
+    void publishLandmarks(); 
+
+    void gtPoseCallback(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg);
+
+    Sophus::SE3f gtLastPose;
+
+    std::vector<float> errors;
+
+    void publishGTPoseMarker();
+
+
 
 
 
