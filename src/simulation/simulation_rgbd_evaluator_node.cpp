@@ -41,7 +41,18 @@ SimulationRGBDEvaluationNode::SimulationRGBDEvaluationNode(ORB_SLAM3::System* pS
         std::bind(&SimulationRGBDEvaluationNode::gtPoseCallback, this, _1)
     );
 
-    gt_pose_marker_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("/slam_evaluation/gt_pose_marker", 10);
+    estimated_pose_marker_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("/slam_evaluation/estimated_pose_marker", 10);
+
+    // Declare a string parameter for output filename (default "KeyFrameTrajectory.txt")
+    this->declare_parameter<std::string>("gt_filename", "gt_trajectory.txt");
+    gt_filename = this->get_parameter("gt_filename").as_string();
+    RCLCPP_INFO(this->get_logger(), "Ground truth filename parameter: %s", gt_filename.c_str());
+
+    this->declare_parameter<std::string>("est_filename", "est_trajectory.txt");
+    est_filename = this->get_parameter("est_filename").as_string();
+    RCLCPP_INFO(this->get_logger(), "Estimated filename parameter: %s", est_filename.c_str());
+
+    rclcpp::on_shutdown([this]() { this->writeLogsToFile(); });
 
 
 }
@@ -83,6 +94,9 @@ void SimulationRGBDEvaluationNode::GrabRGBD(const sensor_msgs::msg::Image::Share
 
     mLastPose = m_SLAM->TrackRGBD(cv_ptrRGB->image, cv_ptrD->image, Utility::StampToSec(msgRGB->header.stamp));
 
+    est_poses_log.push_back(mLastPose);
+    est_time_log.push_back(msgRGB->header.stamp.sec + msgRGB->header.stamp.nanosec * 1e-9);
+
     Eigen::Matrix<float, 6, 6> pose_cov; 
     pose_cov.setIdentity();
 
@@ -111,28 +125,6 @@ void SimulationRGBDEvaluationNode::convertPcl2cv(const PclMsg::SharedPtr cloud)
         }
     }
 
-    // // Iterate through the organized point cloud
-    // for (size_t row = 0; row < cloud->height; ++row)
-    // {
-    //     for (size_t col = 0; col < cloud->width; ++col)
-    //     {
-    //         const auto& point = cloud->data[row * cloud->width + col];
-    //         size_t u = col;
-    //         size_t v = cloud->height-row-1; //image coordinates are flipped
-    //         // Check if the point is valid (not NaN)
-    //         // if (pcl::isFinite(point))
-    //         {
-    //             // Calculate the range value (distance from the origin)
-    //             // float range = point.z;
-                
-    //             img.at<float>(v, u) = point.z; // access as [row, col]
-    //         }
-    //         // else
-    //         // {
-    //         //     img.at<float>(v, u) = 0; // Set invalid points to 0
-    //         // }
-    //     }
-    // }
     cv_ptrD = std::make_shared<const cv_bridge::CvImage>(cv_bridge::CvImage(cloud->header, sensor_msgs::image_encodings::TYPE_32FC1, img));
 }
 
@@ -277,31 +269,35 @@ void SimulationRGBDEvaluationNode::gtPoseCallback(const geometry_msgs::msg::Pose
 
     gtLastPose = Sophus::SE3f(q_gt.toRotationMatrix(), t_gt);
 
-    publishGTPoseMarker();
+    gt_poses_log.push_back(gtLastPose);
+    gt_time_log.push_back(msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9);
 
-
-
+    publishEstimatedPoseMarker();
 
 }
 
-void SimulationRGBDEvaluationNode::publishGTPoseMarker(){
+void SimulationRGBDEvaluationNode::publishEstimatedPoseMarker(){
     visualization_msgs::msg::Marker marker;
     marker.header.frame_id = "slam_map";
     marker.header.stamp = this->now();
-    marker.ns = "gt_pose";
+    marker.ns = "slam_pose";
     marker.id = 0;
-    marker.type = visualization_msgs::msg::Marker::POINTS;
+    marker.type = visualization_msgs::msg::Marker::ARROW;
     marker.action = visualization_msgs::msg::Marker::ADD;
 
+    marker.lifetime = rclcpp::Duration(0, 0);  // forever
+
     // Set the start and end points of the arrow
-    Eigen::Vector3f t = gtLastPose.translation();
+    Eigen::Vector3f t = mLastPose.inverse().translation();
+
+    
     marker.points.resize(2);
     marker.points[0].x = t.x();
     marker.points[0].y = t.y();
     marker.points[0].z = t.z();
 
-    Eigen::Matrix3f R = gtLastPose.rotationMatrix();
-    Eigen::Vector3f arrow_dir = R * Eigen::Vector3f(0.0, 0, 1.0); // Arrow length of 0.2 meters
+    Eigen::Matrix3f R = mLastPose.inverse().rotationMatrix();
+    Eigen::Vector3f arrow_dir = R * Eigen::Vector3f(0.0, 0, 0.5); // Arrow length of 1.0 meters
 
     marker.points[1].x = t.x() + arrow_dir.x();
     marker.points[1].y = t.y() + arrow_dir.y();
@@ -312,12 +308,103 @@ void SimulationRGBDEvaluationNode::publishGTPoseMarker(){
     marker.scale.y = 0.1;  // Head diameter
     marker.scale.z = 0.1;  // Head length
 
-    // Set the color of the arrow (e.g., red)
-    marker.color.r = 1.0f;
-    marker.color.g = 0.0f;
-    marker.color.b = 0.0f;
+    // Set the color of the arrow (e.g., red) rgb(248, 123, 27)
+    marker.color.r = 248.0f / 255.0f;
+    marker.color.g = 123.0f / 255.0f;
+    marker.color.b = 27.0f / 255.0f;
     marker.color.a = 1.0f;
 
     // Publish the marker
-    gt_pose_marker_pub_->publish(marker);
+    estimated_pose_marker_pub_->publish(marker);
+
+    // Add a line strip
+    visualization_msgs::msg::Marker line_strip;
+    line_strip.header.frame_id = "slam_map";
+    line_strip.header.stamp = this->now();
+    line_strip.ns = "slam_trajectory";
+    line_strip.id = 1;
+    line_strip.type = visualization_msgs::msg::Marker::LINE_STRIP;
+    line_strip.action = visualization_msgs::msg::Marker::ADD;
+
+    line_strip.lifetime = rclcpp::Duration(0, 0);  // forever
+
+    // Set the start and end points of the arrow
+    
+    line_strip.points.resize(2);
+
+    line_strip.points[0].x = previous_point.x();
+    line_strip.points[0].y = previous_point.y();
+    line_strip.points[0].z = previous_point.z();
+
+    line_strip.points[1].x = t.x();
+    line_strip.points[1].y = t.y();
+    line_strip.points[1].z = t.z();
+
+    // Set the scale of the arrow
+    line_strip.scale.x = 0.05; // Shaft diameter
+    line_strip.scale.y = 0.1;  // Head diameter
+    line_strip.scale.z = 0.1;  // Head length
+
+    // Set the color of the arrow (e.g., red) rgb(248, 123, 27)
+    line_strip.color.r = 248.0f / 255.0f;
+    line_strip.color.g = 123.0f / 255.0f;
+    line_strip.color.b = 27.0f / 255.0f;
+    line_strip.color.a = 1.0f;
+
+    // Publish the marker
+    estimated_pose_marker_pub_->publish(line_strip);
+
+    previous_point = t;
+
+}
+
+
+void SimulationRGBDEvaluationNode::writeLogsToFile()
+{
+    RCLCPP_INFO(this->get_logger(), "Writing trajectory logs to files...");
+    // Write ground truth poses to file
+    std::ofstream gt_file(gt_filename);
+    if (gt_file.is_open()) {
+        for (size_t i = 0; i < gt_poses_log.size(); ++i) {
+            const Sophus::SE3f& pose = gt_poses_log[i];
+            Eigen::Quaternionf quat = Eigen::Quaternionf(pose.rotationMatrix());
+            float timestamp = gt_time_log[i];
+            gt_file << std::to_string(timestamp) << ","
+                    << pose.translation().x() << ","
+                    << pose.translation().y() << ","
+                    << pose.translation().z() << ","
+                    << quat.x() << ","
+                    << quat.y() << ","
+                    << quat.z() << ","
+                    << quat.w() << "\n";
+        }
+        gt_file.close();
+        RCLCPP_INFO(this->get_logger(), "Ground truth trajectory saved to %s", gt_filename.c_str());
+    } 
+    else {
+        RCLCPP_ERROR(this->get_logger(), "Unable to open file %s for writing", gt_filename.c_str());
+    }
+
+    // Write estimated poses to file
+    std::ofstream est_file(est_filename);
+    if (est_file.is_open()) {
+        for (size_t i = 0; i < est_poses_log.size(); ++i) {
+            const Sophus::SE3f& pose = est_poses_log[i];
+            Eigen::Quaternionf quat = Eigen::Quaternionf(pose.rotationMatrix());
+            float timestamp = est_time_log[i];
+            est_file << std::to_string(timestamp)  << ","
+                     << pose.translation().x() << ","
+                     << pose.translation().y() << ","
+                     << pose.translation().z() << ","
+                     << quat.x() << ","
+                     << quat.y() << ","
+                     << quat.z() << ","
+                     << quat.w() << "\n";
+        }
+        est_file.close();
+        // RCLCPP_INFO(this->get_logger(), "Estimated trajectory saved to %s", est_filename.c_str());
+    } 
+    else {
+       RCLCPP_ERROR(this->get_logger(), "Unable to open file %s for writing", est_filename.c_str());
+    }
 }

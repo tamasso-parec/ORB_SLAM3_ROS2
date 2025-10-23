@@ -84,7 +84,7 @@ private:
     // Bundle Adjustment results
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr localBApublisher_;
 
-    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr gt_pose_marker_pub_;
+    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr estimated_pose_marker_pub_;
 
     rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pose_cov_pub_;
     rclcpp::Publisher<uncertain_pointcloud_msgs::msg::UncertainPointCloud>::SharedPtr point_cloud_pub_;
@@ -111,9 +111,21 @@ private:
 
     Sophus::SE3f gtLastPose;
 
+    Eigen::Vector3f previous_point{0.0f, 0.0f, 0.0f};
+
     std::vector<float> errors;
 
-    void publishGTPoseMarker();
+    void publishEstimatedPoseMarker();
+
+    // Logging
+
+    std::string gt_filename{"gt_trajectory.txt"}, est_filename{"est_trajectory.txt"};
+
+    std::vector<float> gt_time_log, est_time_log;
+    std::vector<Sophus::SE3f> gt_poses_log;
+    std::vector<Sophus::SE3f> est_poses_log;
+
+    void writeLogsToFile();
 
 
 
