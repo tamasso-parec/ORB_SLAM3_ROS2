@@ -95,7 +95,8 @@ void SimulationRGBDEvaluationNode::GrabRGBD(const sensor_msgs::msg::Image::Share
     mLastPose = m_SLAM->TrackRGBD(cv_ptrRGB->image, cv_ptrD->image, Utility::StampToSec(msgRGB->header.stamp));
 
     est_poses_log.push_back(mLastPose);
-    est_time_log.push_back(msgRGB->header.stamp.sec + msgRGB->header.stamp.nanosec * 1e-9);
+    auto time = this->now();
+    est_time_log.push_back(time.seconds() + time.nanoseconds() * 1e-9);
 
     Eigen::Matrix<float, 6, 6> pose_cov; 
     pose_cov.setIdentity();
@@ -267,10 +268,13 @@ void SimulationRGBDEvaluationNode::gtPoseCallback(const geometry_msgs::msg::Pose
                          msg->pose.pose.position.y,
                          msg->pose.pose.position.z);
 
+    //  TODO: We need to rotate it so that it matches the slam frame
+
     gtLastPose = Sophus::SE3f(q_gt.toRotationMatrix(), t_gt);
 
     gt_poses_log.push_back(gtLastPose);
-    gt_time_log.push_back(msg->header.stamp.sec + msg->header.stamp.nanosec * 1e-9);
+    auto time = this->now();
+    gt_time_log.push_back(time.seconds() + time.nanoseconds() * 1e-9);
 
     publishEstimatedPoseMarker();
 
@@ -369,13 +373,13 @@ void SimulationRGBDEvaluationNode::writeLogsToFile()
             const Sophus::SE3f& pose = gt_poses_log[i];
             Eigen::Quaternionf quat = Eigen::Quaternionf(pose.rotationMatrix());
             float timestamp = gt_time_log[i];
-            gt_file << std::to_string(timestamp) << ","
-                    << pose.translation().x() << ","
-                    << pose.translation().y() << ","
-                    << pose.translation().z() << ","
-                    << quat.x() << ","
-                    << quat.y() << ","
-                    << quat.z() << ","
+            gt_file << std::to_string(timestamp) <<  " "
+                    << pose.translation().x() <<  " "
+                    << pose.translation().y() <<  " "
+                    << pose.translation().z() <<  " "
+                    << quat.x() <<  " "
+                    << quat.y() <<  " "
+                    << quat.z() <<  " "
                     << quat.w() << "\n";
         }
         gt_file.close();
@@ -392,13 +396,13 @@ void SimulationRGBDEvaluationNode::writeLogsToFile()
             const Sophus::SE3f& pose = est_poses_log[i];
             Eigen::Quaternionf quat = Eigen::Quaternionf(pose.rotationMatrix());
             float timestamp = est_time_log[i];
-            est_file << std::to_string(timestamp)  << ","
-                     << pose.translation().x() << ","
-                     << pose.translation().y() << ","
-                     << pose.translation().z() << ","
-                     << quat.x() << ","
-                     << quat.y() << ","
-                     << quat.z() << ","
+            est_file << std::to_string(timestamp)  <<  " "
+                     << pose.translation().x() <<  " "
+                     << pose.translation().y() <<  " "
+                     << pose.translation().z() <<  " "
+                     << quat.x() <<  " "
+                     << quat.y() <<  " "
+                     << quat.z() <<  " "
                      << quat.w() << "\n";
         }
         est_file.close();
