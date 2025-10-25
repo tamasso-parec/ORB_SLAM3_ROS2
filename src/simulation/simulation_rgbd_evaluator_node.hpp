@@ -127,6 +127,8 @@ private:
 
     void writeLogsToFile();
 
+    rclcpp::Time start_time;
+
 
 
 
